@@ -23,57 +23,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.majra.core.viewer.ViewerRegistry
+import com.example.majra.feed.ArticleDetailState
+import com.example.majra.feed.FeedListItem
+import com.example.majra.feed.SourceListItem
 import com.example.majra.settings.AccentPalette
 import com.example.majra.settings.ShapeDensity
 import com.example.majra.settings.ThemeMode
 import com.example.majra.settings.ThemePreferences
 import com.example.majra.settings.TypographyScale
 
-data class FeedItem(
-    val id: String,
-    val title: String,
-    val source: String,
-    val summary: String,
-)
-
-data class SourceItem(
-    val id: String,
-    val name: String,
-    val type: String,
-)
-
 @Composable
 fun FeedScreen(
-    onContentSelected: (FeedItem) -> Unit,
+    items: List<FeedListItem>,
+    onContentSelected: (FeedListItem) -> Unit,
 ) {
-    val items = remember {
-        listOf(
-            FeedItem(
-                id = "rss-101",
-                title = "Designing calmer feeds",
-                source = "The Humane Web",
-                summary = "Ideas for building quiet, focused reading experiences.",
-            ),
-            FeedItem(
-                id = "yt-204",
-                title = "Long-form video worth saving",
-                source = "Signal Lab",
-                summary = "Curated analysis videos with chapters and notes.",
-            ),
-            FeedItem(
-                id = "bsky-88",
-                title = "Bluesky news roundup",
-                source = "SkyWatch",
-                summary = "Daily digest from your saved lists.",
-            ),
-        )
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -102,7 +70,7 @@ fun FeedScreen(
                     ListItem(
                         headlineContent = { Text(item.title) },
                         supportingContent = { Text(item.summary) },
-                        overlineContent = { Text(item.source) },
+                        overlineContent = { Text(item.sourceName) },
                     )
                 }
             }
@@ -112,28 +80,9 @@ fun FeedScreen(
 
 @Composable
 fun SourcesScreen(
-    onSourceSelected: (SourceItem) -> Unit,
+    sources: List<SourceListItem>,
+    onSourceSelected: (SourceListItem) -> Unit,
 ) {
-    val sources = remember {
-        listOf(
-            SourceItem(
-                id = "source-1",
-                name = "The Humane Web",
-                type = "RSS",
-            ),
-            SourceItem(
-                id = "source-2",
-                name = "Signal Lab",
-                type = "YouTube",
-            ),
-            SourceItem(
-                id = "source-3",
-                name = "SkyWatch",
-                type = "Bluesky",
-            ),
-        )
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -179,25 +128,9 @@ fun SourcesScreen(
 
 @Composable
 fun SavedScreen(
-    onContentSelected: (FeedItem) -> Unit,
+    items: List<FeedListItem>,
+    onContentSelected: (FeedListItem) -> Unit,
 ) {
-    val items = remember {
-        listOf(
-            FeedItem(
-                id = "saved-11",
-                title = "How to build a reading routine",
-                source = "The Humane Web",
-                summary = "Saved for later: a gentle routine guide.",
-            ),
-            FeedItem(
-                id = "saved-18",
-                title = "YouTube chaptering workflow",
-                source = "Signal Lab",
-                summary = "Your notes, synced with video chapters.",
-            ),
-        )
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -226,7 +159,7 @@ fun SavedScreen(
                     ListItem(
                         headlineContent = { Text(item.title) },
                         supportingContent = { Text(item.summary) },
-                        overlineContent = { Text(item.source) },
+                        overlineContent = { Text(item.sourceName) },
                     )
                 }
             }
@@ -402,9 +335,12 @@ private fun <T> OptionChips(
 
 @Composable
 fun ContentDetailScreen(
-    title: String,
-    source: String,
+    state: ArticleDetailState,
+    viewerRegistry: ViewerRegistry,
+    onToggleSaved: () -> Unit,
+    onMarkRead: () -> Unit,
 ) {
+    val article = state.article
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -412,28 +348,52 @@ fun ContentDetailScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            text = title,
+            text = article?.title.orEmpty(),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = "From $source",
+            text = if (state.sourceName.isNotEmpty()) {
+                "From ${state.sourceName}"
+            } else {
+                ""
+            },
             style = MaterialTheme.typography.bodyMedium,
         )
-        Card {
-            ListItem(
-                headlineContent = { Text("Reader") },
-                supportingContent = { Text("Article or video detail view placeholder.") },
-            )
+        if (article != null) {
+            val viewer = viewerRegistry.viewerFor(article.sourceType)
+            Card {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    viewer.Render(article)
+                }
+            }
+        } else {
+            Card {
+                ListItem(
+                    headlineContent = { Text("Loading") },
+                    supportingContent = { Text("Fetching article details...") },
+                )
+            }
         }
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ElevatedButton(onClick = {}) {
-                Text("Save")
+            ElevatedButton(
+                onClick = onToggleSaved,
+                enabled = article != null,
+            ) {
+                Text(if (article?.isSaved == true) "Saved" else "Save")
             }
-            OutlinedButton(onClick = {}) {
-                Text("Share")
+            OutlinedButton(
+                onClick = onMarkRead,
+                enabled = article != null,
+            ) {
+                Text("Mark read")
             }
         }
     }

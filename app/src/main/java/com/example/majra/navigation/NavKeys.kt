@@ -24,7 +24,7 @@ data object Settings : MajraNavKey
 data class ContentDetail(
     val contentId: String,
     val title: String,
-    val source: String,
+    val sourceType: String,
 ) : MajraNavKey
 
 @Serializable

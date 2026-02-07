@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import com.example.majra.navigation.MajraApp
 import com.example.majra.settings.ThemePreferences
@@ -27,11 +28,13 @@ class MainActivity : ComponentActivity() {
                 initial = ThemePreferences(),
             )
             val scope = rememberCoroutineScope()
+            val appDependencies = remember { AppDependencies.createDefault() }
 
             MajraTheme(
                 themePreferences = themePreferences,
             ) {
                 MajraApp(
+                    appDependencies = appDependencies,
                     themePreferences = themePreferences,
                     onThemeModeChange = { mode ->
                         scope.launch { themePreferencesRepository.setThemeMode(mode) }

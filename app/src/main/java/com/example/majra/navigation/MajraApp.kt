@@ -24,13 +24,24 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.ui.NavDisplay
+import com.example.majra.AppDependencies
+import com.example.majra.feed.ArticleDetailViewModel
+import com.example.majra.feed.ArticleDetailViewModelFactory
+import com.example.majra.feed.FeedViewModel
+import com.example.majra.feed.FeedViewModelFactory
+import com.example.majra.feed.SavedViewModel
+import com.example.majra.feed.SavedViewModelFactory
+import com.example.majra.feed.SourcesViewModel
+import com.example.majra.feed.SourcesViewModelFactory
 import com.example.majra.settings.AccentPalette
 import com.example.majra.settings.ShapeDensity
 import com.example.majra.settings.ThemeMode
@@ -40,6 +51,7 @@ import com.example.majra.settings.TypographyScale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MajraApp(
+    appDependencies: AppDependencies,
     themePreferences: ThemePreferences,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAccentPaletteChange: (AccentPalette) -> Unit,
@@ -88,20 +100,30 @@ fun MajraApp(
     // Entry provider maps keys on the back stack to composable content.
     val entryProvider = entryProvider<NavKey> {
         entry<Feed> {
+            val viewModel = viewModel<FeedViewModel>(
+                factory = FeedViewModelFactory(appDependencies.feedRepository),
+            )
+            val items = viewModel.items.collectAsState()
             FeedScreen(
+                items = items.value,
                 onContentSelected = { item ->
                     navigator.navigate(
                         ContentDetail(
                             contentId = item.id,
                             title = item.title,
-                            source = item.source,
+                            sourceType = item.sourceType,
                         )
                     )
                 },
             )
         }
         entry<Sources> {
+            val viewModel = viewModel<SourcesViewModel>(
+                factory = SourcesViewModelFactory(appDependencies.feedRepository),
+            )
+            val sources = viewModel.items.collectAsState()
             SourcesScreen(
+                sources = sources.value,
                 onSourceSelected = { item ->
                     navigator.navigate(
                         SourceDetail(
@@ -114,13 +136,18 @@ fun MajraApp(
             )
         }
         entry<Saved> {
+            val viewModel = viewModel<SavedViewModel>(
+                factory = SavedViewModelFactory(appDependencies.feedRepository),
+            )
+            val items = viewModel.items.collectAsState()
             SavedScreen(
+                items = items.value,
                 onContentSelected = { item ->
                     navigator.navigate(
                         ContentDetail(
                             contentId = item.id,
                             title = item.title,
-                            source = item.source,
+                            sourceType = item.sourceType,
                         )
                     )
                 },
@@ -136,9 +163,18 @@ fun MajraApp(
             )
         }
         entry<ContentDetail> { key ->
+            val viewModel = viewModel<ArticleDetailViewModel>(
+                factory = ArticleDetailViewModelFactory(
+                    repository = appDependencies.feedRepository,
+                    articleId = key.contentId,
+                ),
+            )
+            val state = viewModel.state.collectAsState()
             ContentDetailScreen(
-                title = key.title,
-                source = key.source,
+                state = state.value,
+                viewerRegistry = appDependencies.viewerRegistry,
+                onToggleSaved = viewModel::toggleSaved,
+                onMarkRead = viewModel::markRead,
             )
         }
         entry<SourceDetail> { key ->

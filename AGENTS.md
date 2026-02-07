@@ -52,17 +52,6 @@ Compose guidelines
 - Prefer `Modifier` as the first optional parameter with a default
 - Use `@Preview` for small, isolated UI pieces
 
-Testing guidelines
-- Unit tests live in `app/src/test`
-- Instrumented tests live in `app/src/androidTest`
-- Prefer deterministic tests; avoid timing-based flakiness
-- Name tests after behavior, not implementation
-
-Dependency management
-- Versions are in `gradle/libs.versions.toml`
-- Add new dependencies through the version catalog
-- Keep module dependencies minimal
-
 Project structure
 - App entry: `app/src/main/java/com/example/majra/MainActivity.kt`
 - Theme: `app/src/main/java/com/example/majra/ui/theme/*`
@@ -73,8 +62,7 @@ Theming
 - Add new palettes by updating `Color.kt`, `AccentPalette`, and `AccentPalette.tokens()`
 
 Comments
-- Add comments for non-obvious logic, data flow, or edge cases
-- Avoid redundant comments that restate code
+- Add comments for most functions,classes etc especially for non-obvious logic, data flow, or edge cases
 
 Navigation
 - Navigation overview: `docs/navigation.md`

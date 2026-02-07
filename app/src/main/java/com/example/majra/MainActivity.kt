@@ -8,12 +8,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.example.majra.navigation.MajraApp
 import com.example.majra.settings.ThemePreferences
 import com.example.majra.settings.ThemePreferencesRepository
 import com.example.majra.settings.themePreferencesDataStore
 import com.example.majra.ui.theme.MajraTheme
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val themePreferencesRepository by lazy {
@@ -28,7 +28,9 @@ class MainActivity : ComponentActivity() {
                 initial = ThemePreferences(),
             )
             val scope = rememberCoroutineScope()
-            val appDependencies = remember { AppDependencies.createDefault() }
+            val appDependencies = remember {
+                AppDependencies.createDefault(applicationContext)
+            }
 
             MajraTheme(
                 themePreferences = themePreferences,

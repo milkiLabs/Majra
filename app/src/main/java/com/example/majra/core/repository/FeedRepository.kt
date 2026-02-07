@@ -10,6 +10,9 @@ interface FeedRepository {
     val feed: Flow<List<Article>>
     val saved: Flow<List<Article>>
 
+    suspend fun addSource(source: Source)
+    suspend fun updateSource(sourceId: String, name: String, url: String)
+    suspend fun removeSource(sourceId: String)
     suspend fun getArticle(articleId: String): Article?
     suspend fun markRead(articleId: String, state: ReadState)
     suspend fun toggleSaved(articleId: String)

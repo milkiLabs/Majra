@@ -34,4 +34,7 @@ data class Article(
 
 object SourceTypes {
     const val RSS = "rss"
+    const val YOUTUBE = "youtube"
+    const val MEDIUM = "medium"
+    const val BLUESKY = "bluesky"
 }

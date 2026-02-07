@@ -44,6 +44,26 @@ class InMemoryFeedRepository : FeedRepository {
         articles.filter { it.isSaved }
     }
 
+    override suspend fun addSource(source: Source) {
+        sourcesState.value = sourcesState.value + source
+    }
+
+    override suspend fun updateSource(sourceId: String, name: String, url: String) {
+        val updated = sourcesState.value.map { source ->
+            if (source.id == sourceId) {
+                source.copy(name = name, url = url)
+            } else {
+                source
+            }
+        }
+        sourcesState.value = updated
+    }
+
+    override suspend fun removeSource(sourceId: String) {
+        sourcesState.value = sourcesState.value.filterNot { it.id == sourceId }
+        articlesState.value = articlesState.value.filterNot { it.sourceId == sourceId }
+    }
+
     override suspend fun getArticle(articleId: String): Article? {
         return articlesState.value.firstOrNull { it.id == articleId }
     }

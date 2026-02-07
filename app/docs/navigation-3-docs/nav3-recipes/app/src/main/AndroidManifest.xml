@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Copyright 2025 The Android Open Source Project
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Nav3Recipes"
+        android:enableOnBackInvokedCallback="true"
+        android:name=".content.Nav3RecipesApplication"
+        tools:targetApi="31">
+        <activity
+            android:name=".RecipePickerActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".basic.BasicActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".commonui.CommonUiActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".basicdsl.BasicDslActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".basicsaveable.BasicSaveableActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".dialog.DialogActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".bottomsheet.BottomSheetActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".material.listdetail.MaterialListDetailActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".material.supportingpane.MaterialSupportingPaneActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".animations.AnimatedActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".conditional.ConditionalActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".passingarguments.viewmodels.basic.BasicViewModelsActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".passingarguments.viewmodels.hilt.HiltViewModelsActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".modular.hilt.HiltModularActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".modular.koin.KoinModularActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".passingarguments.viewmodels.koin.KoinViewModelsActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".results.event.ResultEventActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".results.state.ResultStateActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".migration.atomic.begin.BeginAtomicMigrationActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".migration.atomic.end.EndAtomicMigrationActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".scenes.twopane.TwoPaneActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".scenes.listdetail.ListDetailActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".multiplestacks.MultipleStacksActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes"/>
+        <activity
+            android:name=".deeplink.basic.CreateDeepLinkActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes">
+        </activity>
+        <activity
+            android:name=".deeplink.basic.MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                    android:host="www.nav3recipes.com"/>
+                <!-- filter for exact url -->
+                <uri-relative-filter-group android:allow="true">
+                    <data android:path="/home" />
+                </uri-relative-filter-group>
+                <!-- filter for exactly two path arguments -->
+                <uri-relative-filter-group android:allow="true">
+                    <data android:pathPattern="/users/include/[^/]+$" />
+                </uri-relative-filter-group>
+                <!-- filter for optional query arguments -->
+                <uri-relative-filter-group android:allow="true">
+                    <data android:path="/users/search" />
+                    <data android:query="firstName=value!" />
+                </uri-relative-filter-group>
+                <uri-relative-filter-group android:allow="true">
+                    <data android:path="/users/search" />
+                    <data android:query="minAge=value!" />
+                </uri-relative-filter-group>
+                <uri-relative-filter-group android:allow="true">
+                    <data android:path="/users/search" />
+                    <data android:query="maxAge=value!" />
+                </uri-relative-filter-group>
+                <uri-relative-filter-group android:allow="true">
+                    <data android:path="/users/search" />
+                    <data android:query="location=value!" />
+                </uri-relative-filter-group>
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".deeplink.advanced.AdvancedCreateDeepLinkActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes">
+        </activity>
+        <activity
+            android:name=".sharedviewmodel.SharedViewModelActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nav3Recipes">
+        </activity>
+    </application>
+
+</manifest>

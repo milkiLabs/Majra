@@ -12,7 +12,9 @@ Core Models
 
 Source Types
 - rss (implemented)
-- youtube, medium, bluesky (placeholders only)
+- youtube (implemented via RSS feeds; handles supported)
+- medium (implemented via RSS feeds)
+- bluesky (placeholders only)
 
 Data Layer
 - Room database: sources and articles tables.
@@ -27,8 +29,9 @@ RSS Sync
 - Manual sync only, triggered from the Sources screen.
 
 UI Integration
-- Sources screen shows a Sync RSS button and Add source dialog.
-- Add source lets users enter name and URL; source type picker shows future types disabled.
+- Sources screen shows a Sync sources button and Add source dialog.
+- Add source lets users enter a URL; RSS sources try to resolve the title automatically.
+- Source type picker shows future types disabled.
 - Feed and Saved lists are driven by repository flows.
 - Article detail resolves the viewer from ViewerRegistry.
 
@@ -40,9 +43,12 @@ Viewer System
 Adding a Source
 1) Open Sources tab.
 2) Tap Add source.
-3) Enter URL (name optional).
-4) Keep type = RSS (other types are disabled for now).
-5) Tap Add, then Sync RSS.
+3) Enter a URL.
+4) Choose RSS or YouTube.
+5) For YouTube, paste a channel handle, channel URL/ID, or playlist URL.
+6) For Medium, paste a handle, publication, or RSS feed URL.
+	- Custom domains are supported; we'll try to resolve them to /feed URLs.
+7) Tap Add, then Sync sources.
 
 Extending Later
 - Implement a new ContentSource/Syncer for a source type.

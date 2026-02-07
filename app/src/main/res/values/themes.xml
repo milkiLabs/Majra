@@ -2,4 +2,11 @@
 <resources>
 
     <style name="Theme.Majra" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Majra.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.Majra</item>
+        <item name="android:windowBackground">@drawable/splash_screen</item>
+    </style>
 </resources>

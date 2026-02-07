@@ -1,0 +1,19 @@
+package com.milkilabs.majra.core.repository
+
+import com.milkilabs.majra.core.model.Article
+import com.milkilabs.majra.core.model.ReadState
+import com.milkilabs.majra.core.model.Source
+import kotlinx.coroutines.flow.Flow
+
+interface FeedRepository {
+    val sources: Flow<List<Source>>
+    val feed: Flow<List<Article>>
+    val saved: Flow<List<Article>>
+
+    suspend fun addSource(source: Source)
+    suspend fun updateSource(sourceId: String, name: String, url: String)
+    suspend fun removeSource(sourceId: String)
+    suspend fun getArticle(articleId: String): Article?
+    suspend fun markRead(articleId: String, state: ReadState)
+    suspend fun toggleSaved(articleId: String)
+}

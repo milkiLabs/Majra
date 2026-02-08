@@ -47,8 +47,8 @@ import com.milkilabs.majra.feed.FeedViewModel
 import com.milkilabs.majra.feed.FeedViewModelFactory
 import com.milkilabs.majra.feed.SavedViewModel
 import com.milkilabs.majra.feed.SavedViewModelFactory
-import com.milkilabs.majra.feed.SyncCenterViewModel
-import com.milkilabs.majra.feed.SyncCenterViewModelFactory
+import com.milkilabs.majra.feed.ManageSourcesViewModel
+import com.milkilabs.majra.feed.ManageSourcesViewModelFactory
 import com.milkilabs.majra.settings.AccentPalette
 import com.milkilabs.majra.settings.ShapeDensity
 import com.milkilabs.majra.settings.ThemeMode
@@ -97,9 +97,9 @@ fun MajraApp(
         topLevelRoutes = topLevelDestinations.map { it.key }.toSet(),
     )
     val navigator = remember { Navigator(navigationState) }
-    var isSyncCenterOpen by remember { mutableStateOf(false) }
-    val syncViewModel = viewModel<SyncCenterViewModel>(
-        factory = SyncCenterViewModelFactory(
+    var isManageSourcesOpen by remember { mutableStateOf(false) }
+    val syncViewModel = viewModel<ManageSourcesViewModel>(
+        factory = ManageSourcesViewModelFactory(
             repository = appDependencies.feedRepository,
             rssSyncer = appDependencies.rssSyncer,
             youtubeSyncer = appDependencies.youtubeSyncer,
@@ -241,7 +241,7 @@ fun MajraApp(
                             text = { Text("Manage sources") },
                             onClick = {
                                 showMenu = false
-                                isSyncCenterOpen = true
+                                isManageSourcesOpen = true
                             },
                         )
                     }
@@ -274,13 +274,13 @@ fun MajraApp(
         )
     }
 
-    if (isSyncCenterOpen) {
-        SyncCenterSheet(
+    if (isManageSourcesOpen) {
+        ManageSourcesSheet(
             status = syncStatus.value,
             sources = syncSources.value,
             isAdding = isAddingSource.value,
             addErrorMessage = addSourceError.value,
-            onDismiss = { isSyncCenterOpen = false },
+            onDismiss = { isManageSourcesOpen = false },
             onSyncAll = syncViewModel::syncAll,
             onSyncSource = syncViewModel::syncSource,
             onAddSource = syncViewModel::addSource,

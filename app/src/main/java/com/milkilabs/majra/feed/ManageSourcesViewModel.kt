@@ -21,9 +21,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Centralized sync coordinator for the global Sync Center sheet.
+ * Centralized sync coordinator for the Manage Sources sheet.
  */
-class SyncCenterViewModel(
+class ManageSourcesViewModel(
     private val repository: FeedRepository,
     private val rssSyncer: RssSyncer,
     private val youtubeSyncer: YoutubeSyncer,

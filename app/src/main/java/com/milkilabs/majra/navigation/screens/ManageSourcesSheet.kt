@@ -52,7 +52,7 @@ import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SyncCenterSheet(
+fun ManageSourcesSheet(
     status: SyncStatus,
     sources: List<SourceListItem>,
     isAdding: Boolean,

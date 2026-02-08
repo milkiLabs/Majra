@@ -7,14 +7,14 @@ import com.milkilabs.majra.medium.MediumSyncer
 import com.milkilabs.majra.rss.RssSyncer
 import com.milkilabs.majra.youtube.YoutubeSyncer
 
-/** Factory for the global sync center view model. */
-class SyncCenterViewModelFactory(
+/** Factory for the Manage Sources view model. */
+class ManageSourcesViewModelFactory(
     private val repository: FeedRepository,
     private val rssSyncer: RssSyncer,
     private val youtubeSyncer: YoutubeSyncer,
     private val mediumSyncer: MediumSyncer,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return SyncCenterViewModel(repository, rssSyncer, youtubeSyncer, mediumSyncer) as T
+        return ManageSourcesViewModel(repository, rssSyncer, youtubeSyncer, mediumSyncer) as T
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.milkilabs.majra.core.repository.FeedRepository
 import com.milkilabs.majra.medium.MediumSyncer
+import com.milkilabs.majra.podcast.PodcastSyncer
 import com.milkilabs.majra.rss.RssSyncer
 import com.milkilabs.majra.youtube.YoutubeSyncer
 
@@ -11,10 +12,17 @@ import com.milkilabs.majra.youtube.YoutubeSyncer
 class ManageSourcesViewModelFactory(
     private val repository: FeedRepository,
     private val rssSyncer: RssSyncer,
+    private val podcastSyncer: PodcastSyncer,
     private val youtubeSyncer: YoutubeSyncer,
     private val mediumSyncer: MediumSyncer,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ManageSourcesViewModel(repository, rssSyncer, youtubeSyncer, mediumSyncer) as T
+        return ManageSourcesViewModel(
+            repository,
+            rssSyncer,
+            podcastSyncer,
+            youtubeSyncer,
+            mediumSyncer,
+        ) as T
     }
 }

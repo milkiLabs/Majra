@@ -27,6 +27,11 @@ data class Article(
     val content: String?,
     val url: String,
     val author: String?,
+    val audioUrl: String?,
+    val audioMimeType: String?,
+    val audioDurationSeconds: Int?,
+    val episodeNumber: Int?,
+    val imageUrl: String?,
     val publishedAtMillis: Long?,
     val isSaved: Boolean,
     val readState: ReadState,
@@ -34,6 +39,7 @@ data class Article(
 
 object SourceTypes {
     const val RSS = "rss"
+    const val PODCAST = "podcast"
     const val YOUTUBE = "youtube"
     const val MEDIUM = "medium"
     const val BLUESKY = "bluesky"

@@ -1,5 +1,6 @@
 package com.milkilabs.majra.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -12,39 +13,53 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.FractionalThreshold
+import androidx.compose.material.ResistanceConfig
+import androidx.compose.material.rememberSwipeableState
+import androidx.compose.material.swipeable
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.gestures.Orientation
 import com.milkilabs.majra.core.model.ReadState
 import com.milkilabs.majra.core.model.SourceTypes
 import com.milkilabs.majra.feed.FeedFilters
@@ -52,6 +67,9 @@ import com.milkilabs.majra.feed.FeedListItem
 import com.milkilabs.majra.feed.FeedReadFilter
 import com.milkilabs.majra.feed.SourceListItem
 import com.milkilabs.majra.feed.SyncStatus
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
@@ -60,17 +78,20 @@ fun FeedScreen(
     filters: FeedFilters,
     sources: List<SourceListItem>,
     syncStatus: SyncStatus,
+    snackbarHostState: SnackbarHostState,
     onRefresh: () -> Unit,
     onContentSelected: (FeedListItem) -> Unit,
     onCycleReadFilter: () -> Unit,
     onResetReadFilter: () -> Unit,
     onSourceTypeSelected: (String?) -> Unit,
     onSourceSelected: (String?) -> Unit,
+    onUpdateReadState: (String, ReadState) -> Unit,
 ) {
     var typeMenuExpanded by remember { mutableStateOf(false) }
     var isSourceSheetOpen by remember { mutableStateOf(false) }
     var sourceQuery by remember { mutableStateOf("") }
     var isPullRefreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(syncStatus.isSyncing) {
         if (syncStatus.isSyncing) {
             isPullRefreshing = false
@@ -222,6 +243,13 @@ fun FeedScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("Podcasts") },
+                                onClick = {
+                                    typeMenuExpanded = false
+                                    onSourceTypeSelected(SourceTypes.PODCAST)
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("YouTube") },
                                 onClick = {
                                     typeMenuExpanded = false
@@ -272,42 +300,135 @@ fun FeedScreen(
                 ) {
                     items(items, key = { it.id }) { item ->
                         val isUnread = item.readState == ReadState.Unread
-                        Card(
+                        val targetState = if (isUnread) ReadState.Read else ReadState.Unread
+                        val actionLabel = if (isUnread) "Mark read" else "Mark unread"
+                        val actionMessage = if (isUnread) "Marked as read" else "Marked as unread"
+                        val maxSwipeDistance = 96.dp
+                        val maxSwipePx = with(LocalDensity.current) { maxSwipeDistance.toPx() }
+                        val swipeState = rememberSwipeableState(
+                            initialValue = 0,
+                            confirmStateChange = { nextValue ->
+                                if (nextValue == 1) {
+                                    scope.launch {
+                                        onUpdateReadState(item.id, targetState)
+                                        snackbarHostState.currentSnackbarData?.dismiss()
+                                        val autoDismiss = launch {
+                                            delay(1600)
+                                            snackbarHostState.currentSnackbarData?.dismiss()
+                                        }
+                                        val result = snackbarHostState.showSnackbar(
+                                            message = actionMessage,
+                                            actionLabel = "Undo",
+                                            duration = SnackbarDuration.Short,
+                                        )
+                                        autoDismiss.cancel()
+                                        if (result == SnackbarResult.ActionPerformed) {
+                                            onUpdateReadState(item.id, item.readState)
+                                        }
+                                    }
+                                }
+                                false
+                            },
+                        )
+                        val swipeProgress = (-swipeState.offset.value / maxSwipePx)
+                            .coerceIn(0f, 1f)
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onContentSelected(item) },
+                                .clipToBounds()
+                                .swipeable(
+                                    state = swipeState,
+                                    anchors = mapOf(0f to 0, -maxSwipePx to 1),
+                                    thresholds = { _, _ -> FractionalThreshold(0.5f) },
+                                    orientation = Orientation.Horizontal,
+                                    enabled = true,
+                                    resistance = ResistanceConfig(
+                                        basis = maxSwipePx,
+                                    ),
+                                ),
                         ) {
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        text = item.title,
-                                        fontWeight = if (isUnread) {
-                                            FontWeight.SemiBold
-                                        } else {
-                                            FontWeight.Normal
-                                        },
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        text = item.summary,
-                                        maxLines = 2,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                },
-                                overlineContent = {
-                                    Text(item.sourceName.ifBlank { "Unknown source" })
-                                },
-                                trailingContent = {
-                                    if (isUnread) {
-                                        Text(
-                                            text = "Unread",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                },
+                            val baseBackground = if (isUnread) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.tertiaryContainer
+                            }
+                            val backgroundColor = baseBackground.copy(
+                                alpha = 0.2f + (0.8f * swipeProgress),
                             )
+                            val foregroundColor = if (isUnread) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onTertiaryContainer
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .background(backgroundColor)
+                                    .padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = if (isUnread) {
+                                            Icons.Filled.Done
+                                        } else {
+                                            Icons.Filled.Close
+                                        },
+                                        contentDescription = null,
+                                        tint = foregroundColor,
+                                    )
+                                    Text(
+                                        text = actionLabel,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = foregroundColor.copy(
+                                            alpha = 0.6f + (0.4f * swipeProgress),
+                                        ),
+                                    )
+                                }
+                            }
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset {
+                                        IntOffset(swipeState.offset.value.roundToInt(), 0)
+                                    }
+                                    .clickable { onContentSelected(item) },
+                            ) {
+                                ListItem(
+                                    headlineContent = {
+                                        Text(
+                                            text = item.title,
+                                            fontWeight = if (isUnread) {
+                                                FontWeight.SemiBold
+                                            } else {
+                                                FontWeight.Normal
+                                            },
+                                        )
+                                    },
+                                    supportingContent = {
+                                        Text(
+                                            text = item.summary,
+                                            maxLines = 2,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        )
+                                    },
+                                    overlineContent = {
+                                        Text(item.sourceName.ifBlank { "Unknown source" })
+                                    },
+                                    trailingContent = {
+                                        if (isUnread) {
+                                            Text(
+                                                text = "Unread",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -418,6 +539,7 @@ private fun sourceTypeLabel(type: String?): String {
     return when (type) {
         null -> "All types"
         SourceTypes.RSS -> "RSS"
+        SourceTypes.PODCAST -> "Podcasts"
         SourceTypes.YOUTUBE -> "YouTube"
         SourceTypes.MEDIUM -> "Medium"
         SourceTypes.BLUESKY -> "Bluesky"

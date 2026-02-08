@@ -162,6 +162,11 @@ fun ManageSourcesSheet(
                     label = { Text("RSS") },
                 )
                 FilterChip(
+                    selected = selectedType == SourceTypes.PODCAST,
+                    onClick = { selectedType = SourceTypes.PODCAST },
+                    label = { Text("Podcasts") },
+                )
+                FilterChip(
                     selected = selectedType == SourceTypes.YOUTUBE,
                     onClick = { selectedType = SourceTypes.YOUTUBE },
                     label = { Text("YouTube") },
@@ -271,6 +276,13 @@ fun ManageSourcesSheet(
                     if (selectedAddType == SourceTypes.YOUTUBE) {
                         Text(
                             text = "Paste a channel handle, channel URL/ID, or playlist URL.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (selectedAddType == SourceTypes.PODCAST) {
+                        Text(
+                            text = "Paste a podcast RSS feed URL.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -404,6 +416,7 @@ private fun SourceTypePicker(
 ) {
     val options = listOf(
         SourceTypeOption(SourceTypes.RSS, "RSS", true),
+        SourceTypeOption(SourceTypes.PODCAST, "Podcasts", true),
         SourceTypeOption(SourceTypes.YOUTUBE, "YouTube", true),
         SourceTypeOption(SourceTypes.MEDIUM, "Medium", true),
         SourceTypeOption(SourceTypes.BLUESKY, "Bluesky", false),
@@ -465,6 +478,7 @@ private fun syncRowLabel(source: SourceListItem, isActive: Boolean): String {
 private fun sourceTypeLabel(type: String): String {
     return when (type) {
         SourceTypes.RSS -> "RSS"
+        SourceTypes.PODCAST -> "Podcasts"
         SourceTypes.YOUTUBE -> "YouTube"
         SourceTypes.MEDIUM -> "Medium"
         SourceTypes.BLUESKY -> "Bluesky"

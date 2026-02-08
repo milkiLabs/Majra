@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * Orchestrates the main feed list, filtering, and source picker data.
@@ -121,5 +122,12 @@ class FeedViewModel(
     /** Reset only the read filter back to unread. */
     fun resetReadFilter() {
         filtersState.value = filtersState.value.copy(readFilter = FeedReadFilter.Unread)
+    }
+
+    /** Update the read state for a feed item. */
+    fun setReadState(articleId: String, state: ReadState) {
+        viewModelScope.launch {
+            repository.markRead(articleId, state)
+        }
     }
 }

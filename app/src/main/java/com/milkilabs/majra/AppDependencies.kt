@@ -2,6 +2,7 @@ package com.milkilabs.majra
 
 import android.content.Context
 import com.prof18.rssparser.RssParserBuilder
+import okhttp3.OkHttpClient
 import com.milkilabs.majra.core.model.SourceTypes
 import com.milkilabs.majra.core.repository.FeedRepository
 import com.milkilabs.majra.core.viewer.ArticleViewer
@@ -13,18 +14,20 @@ import com.milkilabs.majra.bluesky.BlueskyArticleViewer
 import com.milkilabs.majra.medium.MediumArticleViewer
 import com.milkilabs.majra.medium.MediumSyncer
 import com.milkilabs.majra.medium.MediumUrlResolver
+import com.milkilabs.majra.podcast.PodcastArticleViewer
+import com.milkilabs.majra.podcast.PodcastSyncer
 import com.milkilabs.majra.rss.RssArticleViewer
 import com.milkilabs.majra.rss.RssSyncer
 import com.milkilabs.majra.youtube.YoutubeArticleViewer
 import com.milkilabs.majra.youtube.YoutubeSyncer
 import com.milkilabs.majra.youtube.YoutubeUrlResolver
-import okhttp3.OkHttpClient
 
 // Simple container that wires app-wide services without a full DI framework.
 class AppDependencies(
     val feedRepository: FeedRepository,
     val viewerRegistry: ViewerRegistry,
     val rssSyncer: RssSyncer,
+    val podcastSyncer: PodcastSyncer,
     val youtubeSyncer: YoutubeSyncer,
     val mediumSyncer: MediumSyncer,
 ) {
@@ -36,6 +39,7 @@ class AppDependencies(
             val rssParser = RssParserBuilder().build()
             val mediumUrlResolver = MediumUrlResolver()
             val rssViewer = RssArticleViewer()
+            val podcastViewer = PodcastArticleViewer()
             val youtubeViewer = YoutubeArticleViewer()
             val mediumViewer = MediumArticleViewer()
             val blueskyViewer = BlueskyArticleViewer()
@@ -49,6 +53,11 @@ class AppDependencies(
                     articleDao = database.articleDao(),
                 ),
                 rssSyncer = RssSyncer(
+                    sourceDao = database.sourceDao(),
+                    articleDao = database.articleDao(),
+                    parser = rssParser,
+                ),
+                podcastSyncer = PodcastSyncer(
                     sourceDao = database.sourceDao(),
                     articleDao = database.articleDao(),
                     parser = rssParser,
@@ -68,6 +77,7 @@ class AppDependencies(
                 viewerRegistry = DefaultViewerRegistry(
                     viewers = mapOf(
                         SourceTypes.RSS to rssViewer,
+                        SourceTypes.PODCAST to podcastViewer,
                         SourceTypes.YOUTUBE to youtubeViewer,
                         SourceTypes.MEDIUM to mediumViewer,
                         SourceTypes.BLUESKY to blueskyViewer,

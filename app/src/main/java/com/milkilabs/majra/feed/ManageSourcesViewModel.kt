@@ -5,20 +5,21 @@ import java.util.Locale
 import java.util.UUID
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.milkilabs.majra.core.model.Source
-import com.milkilabs.majra.core.model.SourceTypes
-import com.milkilabs.majra.core.repository.FeedRepository
-import com.milkilabs.majra.medium.MediumResolveResult
-import com.milkilabs.majra.medium.MediumSyncer
-import com.milkilabs.majra.rss.RssSyncer
-import com.milkilabs.majra.youtube.YoutubeResolveResult
-import com.milkilabs.majra.youtube.YoutubeSyncer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.milkilabs.majra.core.model.Source
+import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.repository.FeedRepository
+import com.milkilabs.majra.medium.MediumResolveResult
+import com.milkilabs.majra.medium.MediumSyncer
+import com.milkilabs.majra.podcast.PodcastSyncer
+import com.milkilabs.majra.rss.RssSyncer
+import com.milkilabs.majra.youtube.YoutubeResolveResult
+import com.milkilabs.majra.youtube.YoutubeSyncer
 
 /**
  * Centralized sync coordinator for the Manage Sources sheet.
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
 class ManageSourcesViewModel(
     private val repository: FeedRepository,
     private val rssSyncer: RssSyncer,
+    private val podcastSyncer: PodcastSyncer,
     private val youtubeSyncer: YoutubeSyncer,
     private val mediumSyncer: MediumSyncer,
 ) : ViewModel() {
@@ -85,6 +87,10 @@ class ManageSourcesViewModel(
             addErrorState.value = "Enter a valid URL."
             return
         }
+        if (type == SourceTypes.PODCAST && !isValidUrl(trimmedUrl)) {
+            addErrorState.value = "Enter a valid URL."
+            return
+        }
         if (type == SourceTypes.YOUTUBE && !isValidUrl(trimmedUrl) && !trimmedUrl.startsWith("@")) {
             addErrorState.value = "Enter a valid YouTube URL or handle."
             return
@@ -98,6 +104,7 @@ class ManageSourcesViewModel(
             try {
                 val resolved = when (type) {
                     SourceTypes.RSS -> resolveRssSource(trimmedUrl)
+                    SourceTypes.PODCAST -> resolvePodcastSource(trimmedUrl)
                     SourceTypes.YOUTUBE -> resolveYoutubeSource(trimmedUrl)
                     SourceTypes.MEDIUM -> resolveMediumSource(trimmedUrl)
                     else -> null
@@ -188,6 +195,7 @@ class ManageSourcesViewModel(
     private suspend fun syncSourceInternal(source: Source) {
         when (source.type) {
             SourceTypes.RSS -> rssSyncer.syncSource(source.id)
+            SourceTypes.PODCAST -> podcastSyncer.syncSource(source.id)
             SourceTypes.YOUTUBE -> youtubeSyncer.syncSource(source.id)
             SourceTypes.MEDIUM -> mediumSyncer.syncSource(source.id)
             else -> Unit
@@ -196,6 +204,11 @@ class ManageSourcesViewModel(
 
     private suspend fun resolveRssSource(url: String): ResolvedSource {
         val resolvedName = rssSyncer.resolveTitle(url)
+        return ResolvedSource(url = url, name = resolvedName, errorMessage = null)
+    }
+
+    private suspend fun resolvePodcastSource(url: String): ResolvedSource {
+        val resolvedName = podcastSyncer.resolveTitle(url)
         return ResolvedSource(url = url, name = resolvedName, errorMessage = null)
     }
 

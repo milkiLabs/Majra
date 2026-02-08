@@ -18,9 +18,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -97,11 +101,13 @@ fun MajraApp(
         topLevelRoutes = topLevelDestinations.map { it.key }.toSet(),
     )
     val navigator = remember { Navigator(navigationState) }
+    val snackbarHostState = remember { SnackbarHostState() }
     var isManageSourcesOpen by remember { mutableStateOf(false) }
     val syncViewModel = viewModel<ManageSourcesViewModel>(
         factory = ManageSourcesViewModelFactory(
             repository = appDependencies.feedRepository,
             rssSyncer = appDependencies.rssSyncer,
+            podcastSyncer = appDependencies.podcastSyncer,
             youtubeSyncer = appDependencies.youtubeSyncer,
             mediumSyncer = appDependencies.mediumSyncer,
         ),
@@ -125,6 +131,7 @@ fun MajraApp(
                 filters = filters.value,
                 sources = sources.value,
                 syncStatus = syncStatus.value,
+                snackbarHostState = snackbarHostState,
                 onRefresh = syncViewModel::syncAll,
                 onContentSelected = { item ->
                     navigator.navigate(
@@ -140,6 +147,7 @@ fun MajraApp(
                 onResetReadFilter = viewModel::resetReadFilter,
                 onSourceTypeSelected = viewModel::setSourceTypeFilter,
                 onSourceSelected = viewModel::setSourceFilter,
+                onUpdateReadState = viewModel::setReadState,
             )
         }
         entry<Saved> {
@@ -190,6 +198,16 @@ fun MajraApp(
     }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = MaterialTheme.colorScheme.inversePrimary,
+                )
+            }
+        },
         topBar = {
             val currentStack = navigationState.currentBackStack()
             val currentKey = currentStack.last()

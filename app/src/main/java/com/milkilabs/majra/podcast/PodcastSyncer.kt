@@ -1,4 +1,4 @@
-package com.milkilabs.majra.youtube
+package com.milkilabs.majra.podcast
 
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -15,42 +15,27 @@ import com.milkilabs.majra.data.db.ArticleDao
 import com.milkilabs.majra.data.db.ArticleEntity
 import com.milkilabs.majra.data.db.SourceDao
 
-/**
- * Sync YouTube sources by reading the YouTube RSS feed for each stored source.
- */
-class YoutubeSyncer(
+class PodcastSyncer(
     private val sourceDao: SourceDao,
     private val articleDao: ArticleDao,
     private val parser: RssParser,
-    private val urlResolver: YoutubeUrlResolver,
 ) {
-    /** Resolve a user input into a normalized YouTube feed URL plus display name. */
-    suspend fun resolveSource(input: String): YoutubeResolveResult = withContext(Dispatchers.IO) {
-        when (val resolved = urlResolver.resolve(input)) {
-            is YoutubeResolveResult.Error -> resolved
-            is YoutubeResolveResult.Success -> {
-                val title = runCatching { parser.getRssChannel(resolved.source.feedUrl) }
-                    .getOrNull()
-                    ?.title
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                YoutubeResolveResult.Success(
-                    resolved.source.copy(displayName = title ?: resolved.source.displayName),
-                )
-            }
-        }
+    suspend fun resolveTitle(url: String): String? = withContext(Dispatchers.IO) {
+        runCatching { parser.getRssChannel(url) }
+            .getOrNull()
+            ?.title
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
 
-    /** Fetch YouTube feed items for all stored YouTube sources and upsert them into Room. */
     suspend fun syncAll() = withContext(Dispatchers.IO) {
-        val sources = sourceDao.getSourcesByType(SourceTypes.YOUTUBE)
+        val sources = sourceDao.getSourcesByType(SourceTypes.PODCAST)
         syncSources(sources)
     }
 
-    /** Fetch YouTube feed items for a single stored source. */
     suspend fun syncSource(sourceId: String) = withContext(Dispatchers.IO) {
         val source = sourceDao.getSourceById(sourceId) ?: return@withContext
-        if (source.type != SourceTypes.YOUTUBE) return@withContext
+        if (source.type != SourceTypes.PODCAST) return@withContext
         syncSources(listOf(source))
     }
 
@@ -75,11 +60,11 @@ class YoutubeSyncer(
                     content = item.content?.takeIf { it.isNotBlank() },
                     url = item.link ?: source.url,
                     author = item.author?.takeIf { it.isNotBlank() },
-                    audioUrl = null,
-                    audioMimeType = null,
-                    audioDurationSeconds = null,
-                    episodeNumber = null,
-                    imageUrl = null,
+                    audioUrl = audioUrlFor(item),
+                    audioMimeType = audioMimeTypeFor(item),
+                    audioDurationSeconds = durationSecondsFor(item),
+                    episodeNumber = episodeNumberFor(item),
+                    imageUrl = imageUrlFor(item),
                     publishedAtMillis = publishedAtMillisFor(item),
                     isSaved = false,
                     readState = ReadState.Unread.name,
@@ -97,7 +82,6 @@ class YoutubeSyncer(
                     candidate.publishedAtMillis != null -> candidate.publishedAtMillis
                     else -> System.currentTimeMillis()
                 }
-                // Preserve user state and keep timestamps stable across refreshes.
                 candidate.copy(
                     publishedAtMillis = resolvedPublishedAt,
                     isSaved = current?.isSaved ?: candidate.isSaved,
@@ -140,7 +124,6 @@ class YoutubeSyncer(
         }
     }
 
-    // Try common RSS/Atom date formats; fall back to null when unknown.
     private fun publishedAtMillisFor(item: RssItem): Long? {
         val dateText = item.pubDate?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val patterns = listOf(
@@ -160,5 +143,95 @@ class YoutubeSyncer(
                 ?.let { return it }
         }
         return null
+    }
+
+    private fun audioUrlFor(item: RssItem): String? {
+        return firstNonBlank(
+            nestedStringProperty(item, "enclosure", "url"),
+            stringProperty(item, "enclosureUrl"),
+            stringProperty(item, "audioUrl"),
+            stringProperty(item, "audio"),
+        )
+    }
+
+    private fun audioMimeTypeFor(item: RssItem): String? {
+        return firstNonBlank(
+            nestedStringProperty(item, "enclosure", "type"),
+            stringProperty(item, "enclosureType"),
+        )
+    }
+
+    private fun durationSecondsFor(item: RssItem): Int? {
+        return parseDurationSeconds(
+            firstNonBlank(
+                stringProperty(item, "itunesDuration"),
+                stringProperty(item, "duration"),
+            ),
+        )
+    }
+
+    private fun episodeNumberFor(item: RssItem): Int? {
+        val raw = firstNonBlank(
+            stringProperty(item, "itunesEpisode"),
+            stringProperty(item, "episode"),
+        )
+        return raw?.toIntOrNull()
+    }
+
+    private fun imageUrlFor(item: RssItem): String? {
+        return firstNonBlank(
+            stringProperty(item, "itunesImage"),
+            stringProperty(item, "imageUrl"),
+            nestedStringProperty(item, "image", "url"),
+        )
+    }
+
+    private fun parseDurationSeconds(raw: String?): Int? {
+        val text = raw?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (text.all { it.isDigit() }) {
+            return text.toIntOrNull()
+        }
+        val parts = text.split(":")
+        if (parts.size !in 2..3) return null
+        if (parts.any { it.isBlank() || it.any { ch -> !ch.isDigit() } }) return null
+        val numbers = parts.mapNotNull { it.toIntOrNull() }
+        if (numbers.size != parts.size) return null
+        return if (numbers.size == 2) {
+            numbers[0] * 60 + numbers[1]
+        } else {
+            numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+        }
+    }
+
+
+    // Use reflection to read optional RSS parser fields across versions.
+    private fun firstNonBlank(vararg values: String?): String? {
+        return values.firstOrNull { !it.isNullOrBlank() }?.trim()
+    }
+
+    private fun stringProperty(target: Any, name: String): String? {
+        val method = target.javaClass.methods.firstOrNull { method ->
+            method.name == getterName(name) && method.parameterCount == 0
+        }
+        val value = runCatching { method?.invoke(target) }.getOrNull() as? String
+        return value?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun nestedStringProperty(target: Any, name: String, nested: String): String? {
+        val parent = objectProperty(target, name) ?: return null
+        return stringProperty(parent, nested)
+    }
+
+    private fun objectProperty(target: Any, name: String): Any? {
+        val method = target.javaClass.methods.firstOrNull { method ->
+            method.name == getterName(name) && method.parameterCount == 0
+        }
+        return runCatching { method?.invoke(target) }.getOrNull()
+    }
+
+    private fun getterName(name: String): String {
+        if (name.isEmpty()) return name
+        val first = name[0].uppercaseChar()
+        return "get$first${name.substring(1)}"
     }
 }

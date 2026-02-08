@@ -41,12 +41,14 @@ private class SeedCallback : Callback() {
             """
             INSERT INTO articles (
                 id, sourceId, sourceType, title, summary, content, url, author,
+                audioUrl, audioMimeType, audioDurationSeconds, episodeNumber, imageUrl,
                 publishedAtMillis, isSaved, readState
             ) VALUES (
                 'rss-101', 'source-rss-1', '${SourceTypes.RSS}', 'Designing calmer feeds',
                 'Ideas for building quiet, focused reading experiences.',
                 'A gentle approach to reader-first design.',
                 'https://example.com/reader-first', 'Humane Web',
+                NULL, NULL, NULL, NULL, NULL,
                 NULL, 0, 'Unread'
             )
             """.trimIndent(),

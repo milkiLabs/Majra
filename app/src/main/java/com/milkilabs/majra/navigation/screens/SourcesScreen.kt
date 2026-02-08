@@ -18,7 +18,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
-import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -42,12 +41,9 @@ import com.milkilabs.majra.feed.SourceListItem
 fun SourcesScreen(
     sources: List<SourceListItem>,
     onAddSource: (url: String, type: String) -> Unit,
-    onSyncRss: () -> Unit,
     onSourceSelected: (SourceListItem) -> Unit,
     isAdding: Boolean,
-    isSyncing: Boolean,
     addErrorMessage: String?,
-    syncErrorMessage: String?,
 ) {
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var pendingAdd by rememberSaveable { mutableStateOf(false) }
@@ -79,40 +75,11 @@ fun SourcesScreen(
             style = MaterialTheme.typography.bodyMedium,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        Row(
+        OutlinedButton(
+            onClick = { showAddDialog = true },
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedButton(
-                onClick = onSyncRss,
-                modifier = Modifier.weight(1f),
-                enabled = !isSyncing,
-            ) {
-                if (isSyncing) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        modifier = Modifier
-                            .padding(vertical = 2.dp)
-                            .size(18.dp),
-                    )
-                } else {
-                    Text("Sync sources")
-                }
-            }
-            ElevatedButton(
-                onClick = { showAddDialog = true },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Add source")
-            }
-        }
-        syncErrorMessage?.let { message ->
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
+            Text("Add source")
         }
         Spacer(modifier = Modifier.height(16.dp))
         if (sources.isEmpty()) {

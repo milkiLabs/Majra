@@ -13,7 +13,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
@@ -25,8 +28,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +52,8 @@ import com.milkilabs.majra.feed.SourcesViewModel
 import com.milkilabs.majra.feed.SourcesViewModelFactory
 import com.milkilabs.majra.feed.SourceDetailViewModel
 import com.milkilabs.majra.feed.SourceDetailViewModelFactory
+import com.milkilabs.majra.feed.SyncCenterViewModel
+import com.milkilabs.majra.feed.SyncCenterViewModelFactory
 import com.milkilabs.majra.settings.AccentPalette
 import com.milkilabs.majra.settings.ShapeDensity
 import com.milkilabs.majra.settings.ThemeMode
@@ -100,6 +108,17 @@ fun MajraApp(
         topLevelRoutes = topLevelDestinations.map { it.key }.toSet(),
     )
     val navigator = remember { Navigator(navigationState) }
+    var isSyncCenterOpen by remember { mutableStateOf(false) }
+    val syncViewModel = viewModel<SyncCenterViewModel>(
+        factory = SyncCenterViewModelFactory(
+            repository = appDependencies.feedRepository,
+            rssSyncer = appDependencies.rssSyncer,
+            youtubeSyncer = appDependencies.youtubeSyncer,
+            mediumSyncer = appDependencies.mediumSyncer,
+        ),
+    )
+    val syncStatus = syncViewModel.status.collectAsState()
+    val syncSources = syncViewModel.sources.collectAsState()
 
     // Entry provider maps keys on the back stack to composable content.
     val entryProvider = entryProvider<NavKey> {
@@ -114,6 +133,8 @@ fun MajraApp(
                 items = items.value,
                 filters = filters.value,
                 sources = sources.value,
+                syncStatus = syncStatus.value,
+                onRefresh = syncViewModel::syncAll,
                 onContentSelected = { item ->
                     navigator.navigate(
                         ContentDetail(
@@ -141,13 +162,10 @@ fun MajraApp(
             )
             val sources = viewModel.items.collectAsState()
             val isAdding = viewModel.isAdding.collectAsState()
-            val isSyncing = viewModel.isSyncing.collectAsState()
             val addError = viewModel.addError.collectAsState()
-            val syncError = viewModel.syncError.collectAsState()
             SourcesScreen(
                 sources = sources.value,
                 onAddSource = viewModel::addSource,
-                onSyncRss = viewModel::syncSources,
                 onSourceSelected = { item ->
                     navigator.navigate(
                         SourceDetail(
@@ -158,9 +176,7 @@ fun MajraApp(
                     )
                 },
                 isAdding = isAdding.value,
-                isSyncing = isSyncing.value,
                 addErrorMessage = addError.value,
-                syncErrorMessage = syncError.value,
             )
         }
         entry<Saved> {
@@ -236,6 +252,7 @@ fun MajraApp(
             val sources = appDependencies.feedRepository.sources
                 .collectAsState(initial = emptyList())
             val showBack = currentStack.size > 1
+            var showMenu by remember { mutableStateOf(false) }
             val title = when (currentKey) {
                 is ContentDetail -> {
                     val source = sources.value.firstOrNull { it.id == currentKey.sourceId }
@@ -273,6 +290,26 @@ fun MajraApp(
                         }
                     }
                 },
+                actions = {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "More",
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Sync") },
+                            onClick = {
+                                showMenu = false
+                                isSyncCenterOpen = true
+                            },
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(),
             )
         },
@@ -298,6 +335,16 @@ fun MajraApp(
             padding = padding,
             entries = navigationState.toDecoratedEntries(entryProvider),
             onBack = { navigator.goBack() },
+        )
+    }
+
+    if (isSyncCenterOpen) {
+        SyncCenterSheet(
+            status = syncStatus.value,
+            sources = syncSources.value,
+            onDismiss = { isSyncCenterOpen = false },
+            onSyncAll = syncViewModel::syncAll,
+            onSyncSource = syncViewModel::syncSource,
         )
     }
 }

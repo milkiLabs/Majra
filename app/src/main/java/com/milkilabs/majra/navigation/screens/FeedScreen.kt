@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
@@ -23,6 +27,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -34,7 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,13 +51,16 @@ import com.milkilabs.majra.feed.FeedFilters
 import com.milkilabs.majra.feed.FeedListItem
 import com.milkilabs.majra.feed.FeedReadFilter
 import com.milkilabs.majra.feed.SourceListItem
+import com.milkilabs.majra.feed.SyncStatus
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun FeedScreen(
     items: List<FeedListItem>,
     filters: FeedFilters,
     sources: List<SourceListItem>,
+    syncStatus: SyncStatus,
+    onRefresh: () -> Unit,
     onContentSelected: (FeedListItem) -> Unit,
     onCycleReadFilter: () -> Unit,
     onResetReadFilter: () -> Unit,
@@ -60,108 +70,95 @@ fun FeedScreen(
     var typeMenuExpanded by remember { mutableStateOf(false) }
     var isSourceSheetOpen by remember { mutableStateOf(false) }
     var sourceQuery by remember { mutableStateOf("") }
+    var isPullRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(syncStatus.isSyncing) {
+        if (syncStatus.isSyncing) {
+            isPullRefreshing = false
+        } else if (isPullRefreshing) {
+            isPullRefreshing = false
+        }
+    }
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = isPullRefreshing,
+        onRefresh = {
+            isPullRefreshing = true
+            onRefresh()
+        },
+    )
     val selectedSourceName = sources.firstOrNull { it.id == filters.sourceId }
         ?.name
         ?.ifBlank { "Unknown source" }
         ?: "All sources"
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
+            .pullRefresh(pullRefreshState),
     ) {
-        // Top heading for the feed hub.
-        Text(
-            text = "Feed",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Everything new across your sources, one calm stream.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        // Inline filter bar keeps the primary actions visible with minimal clutter.
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            // Top heading for the feed hub.
+            Text(
+                text = "Feed",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Everything new across your sources, one calm stream.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            // Inline filter bar keeps the primary actions visible with minimal clutter.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
-                    selected = filters.readFilter != FeedReadFilter.Unread,
-                    onClick = onCycleReadFilter,
-                    label = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(readFilterLabel(filters.readFilter))
-                            if (filters.readFilter != FeedReadFilter.Unread) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "Clear read filter",
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .clickable { onResetReadFilter() },
-                                )
-                            }
-                        }
-                    },
-                )
-                FilterChip(
-                    selected = filters.sourceId != null,
-                    onClick = {
-                        sourceQuery = ""
-                        isSourceSheetOpen = true
-                    },
-                    label = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(selectedSourceName)
-                            if (filters.sourceId != null) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "Clear source",
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .clickable { onSourceSelected(null) },
-                                )
-                            }
-                        }
-                    },
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowDropDown,
-                            contentDescription = null,
-                        )
-                    },
-                )
-                FilterChip(
-                    selected = false,
-                    onClick = {},
-                    label = { Text("Category") },
-                    enabled = false,
-                )
-                Box {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     FilterChip(
-                        selected = filters.sourceType != null,
-                        onClick = { typeMenuExpanded = true },
+                        selected = filters.readFilter != FeedReadFilter.Unread,
+                        onClick = onCycleReadFilter,
                         label = {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                Text(sourceTypeLabel(filters.sourceType))
-                                if (filters.sourceType != null) {
+                                Text(readFilterLabel(filters.readFilter))
+                                if (filters.readFilter != FeedReadFilter.Unread) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
-                                        contentDescription = "Clear type",
+                                        contentDescription = "Clear read filter",
                                         modifier = Modifier
                                             .size(16.dp)
-                                            .clickable { onSourceTypeSelected(null) },
+                                            .clickable { onResetReadFilter() },
+                                    )
+                                }
+                            }
+                        },
+                    )
+                    FilterChip(
+                        selected = filters.sourceId != null,
+                        onClick = {
+                            sourceQuery = ""
+                            isSourceSheetOpen = true
+                        },
+                        label = {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(selectedSourceName)
+                                if (filters.sourceId != null) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Clear source",
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clickable { onSourceSelected(null) },
                                     )
                                 }
                             }
@@ -173,97 +170,158 @@ fun FeedScreen(
                             )
                         },
                     )
-                    DropdownMenu(
-                        expanded = typeMenuExpanded,
-                        onDismissRequest = { typeMenuExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("All types") },
-                            onClick = {
-                                typeMenuExpanded = false
-                                onSourceTypeSelected(null)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("RSS") },
-                            onClick = {
-                                typeMenuExpanded = false
-                                onSourceTypeSelected(SourceTypes.RSS)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("YouTube") },
-                            onClick = {
-                                typeMenuExpanded = false
-                                onSourceTypeSelected(SourceTypes.YOUTUBE)
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Medium") },
-                            onClick = {
-                                typeMenuExpanded = false
-                                onSourceTypeSelected(SourceTypes.MEDIUM)
-                            },
-                        )
-                    }
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        if (items.isEmpty()) {
-            // Empty state nudges users to add sources.
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                ListItem(
-                    headlineContent = { Text("No items yet") },
-                    supportingContent = { Text("Add a source to start reading.") },
-                )
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(items, key = { it.id }) { item ->
-                    val isUnread = item.readState == ReadState.Unread
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onContentSelected(item) },
-                    ) {
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    text = item.title,
-                                    fontWeight = if (isUnread) {
-                                        FontWeight.SemiBold
-                                    } else {
-                                        FontWeight.Normal
-                                    },
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    text = item.summary,
-                                    maxLines = 2,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                )
-                            },
-                            overlineContent = { Text(item.sourceName.ifBlank { "Unknown source" }) },
-                            trailingContent = {
-                                if (isUnread) {
-                                    Text(
-                                        text = "Unread",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = {},
+                        label = { Text("Category") },
+                        enabled = false,
+                    )
+                    Box {
+                        FilterChip(
+                            selected = filters.sourceType != null,
+                            onClick = { typeMenuExpanded = true },
+                            label = {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Text(sourceTypeLabel(filters.sourceType))
+                                    if (filters.sourceType != null) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = "Clear type",
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clickable { onSourceTypeSelected(null) },
+                                        )
+                                    }
                                 }
                             },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.ArrowDropDown,
+                                    contentDescription = null,
+                                )
+                            },
                         )
+                        DropdownMenu(
+                            expanded = typeMenuExpanded,
+                            onDismissRequest = { typeMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("All types") },
+                                onClick = {
+                                    typeMenuExpanded = false
+                                    onSourceTypeSelected(null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("RSS") },
+                                onClick = {
+                                    typeMenuExpanded = false
+                                    onSourceTypeSelected(SourceTypes.RSS)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("YouTube") },
+                                onClick = {
+                                    typeMenuExpanded = false
+                                    onSourceTypeSelected(SourceTypes.YOUTUBE)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Medium") },
+                                onClick = {
+                                    typeMenuExpanded = false
+                                    onSourceTypeSelected(SourceTypes.MEDIUM)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            if (syncStatus.isSyncing && syncStatus.total > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Syncing ${syncStatus.completed}/${syncStatus.total}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LinearProgressIndicator(
+                    progress = {
+                        syncStatus.completed.toFloat() / syncStatus.total.toFloat()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            if (items.isEmpty()) {
+                // Empty state nudges users to add sources.
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    ListItem(
+                        headlineContent = { Text("No items yet") },
+                        supportingContent = { Text("Add a source to start reading.") },
+                    )
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(items, key = { it.id }) { item ->
+                        val isUnread = item.readState == ReadState.Unread
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onContentSelected(item) },
+                        ) {
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = item.title,
+                                        fontWeight = if (isUnread) {
+                                            FontWeight.SemiBold
+                                        } else {
+                                            FontWeight.Normal
+                                        },
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        text = item.summary,
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                },
+                                overlineContent = {
+                                    Text(item.sourceName.ifBlank { "Unknown source" })
+                                },
+                                trailingContent = {
+                                    if (isUnread) {
+                                        Text(
+                                            text = "Unread",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
+        PullRefreshIndicator(
+            refreshing = isPullRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 12.dp),
+            backgroundColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+        )
     }
 
     if (isSourceSheetOpen) {

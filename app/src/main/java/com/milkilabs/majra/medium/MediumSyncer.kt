@@ -44,7 +44,18 @@ class MediumSyncer(
     /** Fetch Medium feed items for all stored Medium sources and upsert them into Room. */
     suspend fun syncAll() = withContext(Dispatchers.IO) {
         val sources = sourceDao.getSourcesByType(SourceTypes.MEDIUM)
-        if (sources.isEmpty()) return@withContext
+        syncSources(sources)
+    }
+
+    /** Fetch Medium feed items for a single stored source. */
+    suspend fun syncSource(sourceId: String) = withContext(Dispatchers.IO) {
+        val source = sourceDao.getSourceById(sourceId) ?: return@withContext
+        if (source.type != SourceTypes.MEDIUM) return@withContext
+        syncSources(listOf(source))
+    }
+
+    private suspend fun syncSources(sources: List<com.milkilabs.majra.data.db.SourceEntity>) {
+        if (sources.isEmpty()) return
 
         val pendingArticles = mutableListOf<ArticleEntity>()
         sources.forEach { source ->

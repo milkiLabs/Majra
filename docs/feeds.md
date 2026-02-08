@@ -3,7 +3,7 @@ Majra Feeds Architecture
 Overview
 - Local-first feed storage using Room.
 - Pluggable source types and per-source viewers.
-- Manual RSS sync only (no background sync yet).
+- Manual sync (no background sync yet).
 
 Core Models
 - Source: id, name, type, url.
@@ -29,7 +29,9 @@ RSS Sync
 - Manual sync only, triggered from the Sources screen.
 
 UI Integration
-- Sources screen shows a Sync sources button and Add source dialog.
+- Global Sync Center is available from the top app bar overflow menu.
+- Feed supports pull-to-refresh for quick sync and shows sync progress.
+- Sources screen focuses on adding sources and browsing them.
 - Add source lets users enter a URL; RSS sources try to resolve the title automatically.
 - Source type picker shows future types disabled.
 - Feed and Saved lists are driven by repository flows.
@@ -48,7 +50,20 @@ Adding a Source
 5) For YouTube, paste a channel handle, channel URL/ID, or playlist URL.
 6) For Medium, paste a handle, publication, or RSS feed URL.
 	- Custom domains are supported; we'll try to resolve them to /feed URLs.
-7) Tap Add, then Sync sources.
+7) Tap Add, then use Sync Center or pull-to-refresh.
+
+Feed Filters
+- Read status: Unread | Read | All (default: Unread)
+- Source filter: pick a specific source from a searchable sheet
+- Source type filter: RSS / YouTube / Medium
+- Category chip is a placeholder for future filtering
+
+Sync Center
+- Global sheet reachable from the top app bar overflow menu.
+- Sync all button for one-tap refresh.
+- Per-source sync actions from the source list in the sheet.
+- Progress shows completed/total and current source when syncing.
+- Feed pull-to-refresh triggers sync all and shows a themed indicator.
 
 Extending Later
 - Implement a new ContentSource/Syncer for a source type.

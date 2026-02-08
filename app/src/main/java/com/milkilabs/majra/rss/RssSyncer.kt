@@ -31,7 +31,18 @@ class RssSyncer(
     // Fetch RSS items for all RSS sources and upsert them into Room.
     suspend fun syncAll() = withContext(Dispatchers.IO) {
         val sources = sourceDao.getSourcesByType(SourceTypes.RSS)
-        if (sources.isEmpty()) return@withContext
+        syncSources(sources)
+    }
+
+    // Fetch RSS items for a single source.
+    suspend fun syncSource(sourceId: String) = withContext(Dispatchers.IO) {
+        val source = sourceDao.getSourceById(sourceId) ?: return@withContext
+        if (source.type != SourceTypes.RSS) return@withContext
+        syncSources(listOf(source))
+    }
+
+    private suspend fun syncSources(sources: List<com.milkilabs.majra.data.db.SourceEntity>) {
+        if (sources.isEmpty()) return
 
         val pendingArticles = mutableListOf<ArticleEntity>()
         sources.forEach { source ->

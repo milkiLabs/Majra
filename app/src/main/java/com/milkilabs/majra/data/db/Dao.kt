@@ -21,6 +21,9 @@ interface SourceDao {
     @Query("SELECT * FROM sources WHERE type = :type ORDER BY name")
     suspend fun getSourcesByType(type: String): List<SourceEntity>
 
+    @Query("SELECT * FROM sources WHERE id = :sourceId LIMIT 1")
+    suspend fun getSourceById(sourceId: String): SourceEntity?
+
     @Query("UPDATE sources SET name = :name, url = :url WHERE id = :sourceId")
     suspend fun updateSource(sourceId: String, name: String, url: String)
 

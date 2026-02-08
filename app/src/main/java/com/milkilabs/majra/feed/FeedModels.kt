@@ -52,10 +52,3 @@ data class ArticleDetailState(
     val article: Article?,
     val sourceName: String,
 )
-
-/**
- * Detail UI state for a single source.
- */
-data class SourceDetailState(
-    val source: Source?,
-)

@@ -1,19 +1,20 @@
-Sync Center
+Manage Sources
 
 Overview
-- Global sync surface available from the top app bar overflow menu.
-- Centralizes "sync all" and per-source sync so controls are not duplicated.
+- Global source management surface available from the top app bar overflow menu.
+- Centralizes add, edit, remove, and sync controls in one place.
 - Shows compact progress and status without cluttering other screens.
 
 Entry Point
-- Open the overflow menu in the top app bar and choose "Sync".
+- Open the overflow menu in the top app bar and choose "Manage sources".
 
 UI Behavior
 - Header shows current sync status and last synced time.
 - "Sync all now" triggers a full refresh across all sources.
+- "Add source" opens a dialog for adding RSS, YouTube, or Medium feeds.
 - Search box filters sources by name or URL.
 - Type chips filter the source list by RSS, YouTube, or Medium.
-- Each source row exposes a "Sync" action for individual refresh.
+- Each source row exposes sync, edit, and remove actions.
 - While syncing, a progress bar shows completed/total.
 
 Progress and Status
@@ -26,6 +27,7 @@ Related UX
 - Feed shows a compact progress bar while syncing is active.
 
 Implementation Notes
-- Sync is coordinated in SyncCenterViewModel.
+- Manage Sources is coordinated in SyncCenterViewModel.
 - Per-source sync uses syncSource(sourceId) in each syncer.
 - Global sync uses sequential sync to surface progress.
+- Add source resolves URLs before storing them.

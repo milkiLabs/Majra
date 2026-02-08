@@ -11,9 +11,6 @@ sealed interface MajraNavKey : NavKey
 data object Feed : MajraNavKey
 
 @Serializable
-data object Sources : MajraNavKey
-
-@Serializable
 data object Saved : MajraNavKey
 
 @Serializable
@@ -26,12 +23,5 @@ data class ContentDetail(
     val sourceId: String,
     val sourceType: String,
     val sourceName: String,
-) : MajraNavKey
-
-@Serializable
-data class SourceDetail(
-    val sourceId: String,
-    val name: String,
-    val type: String,
 ) : MajraNavKey
 

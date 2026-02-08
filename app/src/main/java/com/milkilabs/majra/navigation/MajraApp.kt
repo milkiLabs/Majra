@@ -12,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
@@ -48,10 +47,6 @@ import com.milkilabs.majra.feed.FeedViewModel
 import com.milkilabs.majra.feed.FeedViewModelFactory
 import com.milkilabs.majra.feed.SavedViewModel
 import com.milkilabs.majra.feed.SavedViewModelFactory
-import com.milkilabs.majra.feed.SourcesViewModel
-import com.milkilabs.majra.feed.SourcesViewModelFactory
-import com.milkilabs.majra.feed.SourceDetailViewModel
-import com.milkilabs.majra.feed.SourceDetailViewModelFactory
 import com.milkilabs.majra.feed.SyncCenterViewModel
 import com.milkilabs.majra.feed.SyncCenterViewModelFactory
 import com.milkilabs.majra.settings.AccentPalette
@@ -77,12 +72,6 @@ fun MajraApp(
                 label = "Feed",
                 title = "Feed",
                 icon = Icons.Filled.Home,
-            ),
-            TopLevelNavItem(
-                key = Sources,
-                label = "Sources",
-                title = "Sources",
-                icon = Icons.AutoMirrored.Filled.List,
             ),
             TopLevelNavItem(
                 key = Saved,
@@ -119,6 +108,8 @@ fun MajraApp(
     )
     val syncStatus = syncViewModel.status.collectAsState()
     val syncSources = syncViewModel.sources.collectAsState()
+    val isAddingSource = syncViewModel.isAdding.collectAsState()
+    val addSourceError = syncViewModel.addError.collectAsState()
 
     // Entry provider maps keys on the back stack to composable content.
     val entryProvider = entryProvider<NavKey> {
@@ -149,34 +140,6 @@ fun MajraApp(
                 onResetReadFilter = viewModel::resetReadFilter,
                 onSourceTypeSelected = viewModel::setSourceTypeFilter,
                 onSourceSelected = viewModel::setSourceFilter,
-            )
-        }
-        entry<Sources> {
-            val viewModel = viewModel<SourcesViewModel>(
-                factory = SourcesViewModelFactory(
-                    appDependencies.feedRepository,
-                    appDependencies.rssSyncer,
-                    appDependencies.youtubeSyncer,
-                    appDependencies.mediumSyncer,
-                ),
-            )
-            val sources = viewModel.items.collectAsState()
-            val isAdding = viewModel.isAdding.collectAsState()
-            val addError = viewModel.addError.collectAsState()
-            SourcesScreen(
-                sources = sources.value,
-                onAddSource = viewModel::addSource,
-                onSourceSelected = { item ->
-                    navigator.navigate(
-                        SourceDetail(
-                            sourceId = item.id,
-                            name = item.name,
-                            type = item.type,
-                        )
-                    )
-                },
-                isAdding = isAdding.value,
-                addErrorMessage = addError.value,
             )
         }
         entry<Saved> {
@@ -224,25 +187,6 @@ fun MajraApp(
                 onToggleSaved = viewModel::toggleSaved,
             )
         }
-        entry<SourceDetail> { key ->
-            val viewModel = viewModel<SourceDetailViewModel>(
-                factory = SourceDetailViewModelFactory(
-                    repository = appDependencies.feedRepository,
-                    sourceId = key.sourceId,
-                ),
-            )
-            val state = viewModel.state.collectAsState()
-            SourceDetailScreen(
-                name = key.name,
-                type = key.type,
-                state = state.value,
-                onUpdateSource = viewModel::updateSource,
-                onRemoveSource = {
-                    viewModel.removeSource()
-                    navigator.goBack()
-                },
-            )
-        }
     }
 
     Scaffold(
@@ -260,14 +204,6 @@ fun MajraApp(
                         ?.ifBlank { source.url }
                         ?: currentKey.sourceName.ifBlank { "Unknown source" }
                     val sourceLabel = currentKey.sourceType.uppercase()
-                    "$sourceLabel · $sourceName"
-                }
-                is SourceDetail -> {
-                    val source = sources.value.firstOrNull { it.id == currentKey.sourceId }
-                    val sourceName = source?.name
-                        ?.ifBlank { source.url }
-                        ?: currentKey.name.ifBlank { "Unknown source" }
-                    val sourceLabel = (source?.type ?: currentKey.type).uppercase()
                     "$sourceLabel · $sourceName"
                 }
                 else -> titleFor(currentKey, topLevelByKey)
@@ -302,7 +238,7 @@ fun MajraApp(
                         onDismissRequest = { showMenu = false },
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Sync") },
+                            text = { Text("Manage sources") },
                             onClick = {
                                 showMenu = false
                                 isSyncCenterOpen = true
@@ -342,9 +278,14 @@ fun MajraApp(
         SyncCenterSheet(
             status = syncStatus.value,
             sources = syncSources.value,
+            isAdding = isAddingSource.value,
+            addErrorMessage = addSourceError.value,
             onDismiss = { isSyncCenterOpen = false },
             onSyncAll = syncViewModel::syncAll,
             onSyncSource = syncViewModel::syncSource,
+            onAddSource = syncViewModel::addSource,
+            onUpdateSource = syncViewModel::updateSource,
+            onRemoveSource = syncViewModel::removeSource,
         )
     }
 }
@@ -405,7 +346,6 @@ private fun titleFor(
     topLevelByKey: Map<MajraNavKey, TopLevelNavItem>,
 ): String {
     return when (key) {
-        is SourceDetail -> key.name
         is MajraNavKey -> topLevelByKey[key]?.title.orEmpty()
         else -> ""
     }

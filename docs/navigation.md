@@ -10,10 +10,10 @@ This app uses AndroidX Navigation 3 (Nav3) with a multi-stack setup. Each top-le
 
 ## Where the Navigation Lives
 
-- App entry and UI wiring: `app/src/main/java/com/example/majra/navigation/MajraApp.kt`
-- Keys (routes): `app/src/main/java/com/example/majra/navigation/NavKeys.kt`
-- Multi-stack state: `app/src/main/java/com/example/majra/navigation/NavigationState.kt`
-- Navigation helper: `app/src/main/java/com/example/majra/navigation/Navigator.kt`
+- App entry and UI wiring: `app/src/main/java/com/milkilabs/majra/navigation/MajraApp.kt`
+- Keys (routes): `app/src/main/java/com/milkilabs/majra/navigation/NavKeys.kt`
+- Multi-stack state: `app/src/main/java/com/milkilabs/majra/navigation/NavigationState.kt`
+- Navigation helper: `app/src/main/java/com/milkilabs/majra/navigation/Navigator.kt`
 
 ## Architecture Overview
 
@@ -66,7 +66,7 @@ This matches Nav3 guidance so each screen keeps its own state while on the stack
 
 ## Files to Read First
 
-- `app/src/main/java/com/example/majra/navigation/MajraApp.kt`
-- `app/src/main/java/com/example/majra/navigation/NavigationState.kt`
-- `app/src/main/java/com/example/majra/navigation/Navigator.kt`
-- `app/src/main/java/com/example/majra/navigation/NavKeys.kt`
+- `app/src/main/java/com/milkilabs/majra/navigation/MajraApp.kt`
+- `app/src/main/java/com/milkilabs/majra/navigation/NavigationState.kt`
+- `app/src/main/java/com/milkilabs/majra/navigation/Navigator.kt`
+- `app/src/main/java/com/milkilabs/majra/navigation/NavKeys.kt`

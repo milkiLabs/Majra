@@ -2,6 +2,7 @@ package com.milkilabs.majra.core.viewer
 
 import androidx.compose.runtime.Composable
 import com.milkilabs.majra.core.model.Article
+import com.milkilabs.majra.core.model.SourceTypeId
 
 fun interface ArticleViewer {
     @Composable
@@ -9,13 +10,13 @@ fun interface ArticleViewer {
 }
 
 interface ViewerRegistry {
-    fun viewerFor(sourceType: String): ArticleViewer
+    fun viewerFor(sourceType: SourceTypeId): ArticleViewer
 }
 
 class DefaultViewerRegistry(
-    private val viewers: Map<String, ArticleViewer>,
+    private val viewers: Map<SourceTypeId, ArticleViewer>,
     private val fallback: ArticleViewer,
 ) : ViewerRegistry {
-    override fun viewerFor(sourceType: String): ArticleViewer =
+    override fun viewerFor(sourceType: SourceTypeId): ArticleViewer =
         viewers[sourceType] ?: fallback
 }

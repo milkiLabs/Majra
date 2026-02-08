@@ -5,16 +5,21 @@ Overview
 - Pluggable source types and per-source viewers.
 - Manual sync (no background sync yet).
 
+See docs/plugins.md for full plugin architecture details and onboarding.
+
 Core Models
-- Source: id, name, type, url.
-- Article: id, sourceId, sourceType, title, summary, content, url, author, publishedAtMillis, isSaved, readState.
+- Source: id, name, type (SourceTypeId), url.
+- Article: id, sourceId, sourceType, title, summary, content, url, author,
+  audioUrl, audioMimeType, audioDurationSeconds, episodeNumber, imageUrl,
+  publishedAtMillis, isSaved, readState.
 - ReadState: Unread | Read.
 
 Source Types
-- rss (implemented)
-- youtube (implemented via RSS feeds; handles supported)
-- medium (implemented via RSS feeds)
-- bluesky (placeholders only)
+- Rss (implemented)
+- Podcast (implemented via RSS feeds)
+- Youtube (implemented via RSS feeds; handles supported)
+- Medium (implemented via RSS feeds)
+- Bluesky (placeholder; disabled)
 
 Data Layer
 - Room database: sources and articles tables.
@@ -32,12 +37,12 @@ UI Integration
 - Manage Sources is available from the top app bar overflow menu.
 - Feed supports pull-to-refresh for quick sync and shows sync progress.
 - Add source lets users enter a URL; RSS sources try to resolve the title automatically.
-- Source type picker shows future types disabled.
+- Source type picker is populated from plugin metadata (labels + icons).
 - Feed and Saved lists are driven by repository flows.
 - Article detail resolves the viewer from ViewerRegistry.
 
 Viewer System
-- ViewerRegistry maps sourceType -> ArticleViewer.
+- ViewerRegistry maps SourceTypeId -> ArticleViewer.
 - RssArticleViewer is registered as the RSS viewer.
 - Fallback viewer currently reuses the RSS viewer.
 
@@ -67,7 +72,7 @@ Manage Sources
 - Feed pull-to-refresh triggers sync all and shows a themed indicator.
 
 Extending Later
-- Implement a new ContentSource/Syncer for a source type.
-- Register a viewer for that type in ViewerRegistry.
-- Enable the type in the source picker.
+- Implement a new SourcePlugin/Syncer for a source type.
+- Register it in AppDependencies (plugins list).
+- Provide optional viewer and icon metadata.
 - Add parsing and upsert logic to Room.

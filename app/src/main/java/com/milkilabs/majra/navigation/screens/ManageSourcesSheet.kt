@@ -40,14 +40,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.model.SourceTypeId
+import com.milkilabs.majra.core.source.SourceInputMode
+import com.milkilabs.majra.core.source.SourceTypeUi
 import com.milkilabs.majra.feed.SourceListItem
 import com.milkilabs.majra.feed.SyncStatus
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,20 +61,29 @@ fun ManageSourcesSheet(
     sources: List<SourceListItem>,
     isAdding: Boolean,
     addErrorMessage: String?,
+    sourceTypeOptions: List<SourceTypeUi>,
     onDismiss: () -> Unit,
     onSyncAll: () -> Unit,
     onSyncSource: (String) -> Unit,
-    onAddSource: (String, String) -> Unit,
+    onAddSource: (String, SourceTypeId) -> Unit,
     onUpdateSource: (String, String, String) -> Unit,
     onRemoveSource: (String) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf<String?>(null) }
+    var selectedType by remember { mutableStateOf<SourceTypeId?>(null) }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var pendingAdd by rememberSaveable { mutableStateOf(false) }
     var urlInput by rememberSaveable { mutableStateOf("") }
-    var selectedAddType by rememberSaveable { mutableStateOf(SourceTypes.RSS) }
+    val sourceTypeSaver = remember {
+        Saver<SourceTypeId, String>(
+            save = { it.value },
+            restore = { SourceTypeId.fromValue(it) },
+        )
+    }
+    var selectedAddType by rememberSaveable(stateSaver = sourceTypeSaver) {
+        mutableStateOf<SourceTypeId>(SourceTypeId.Rss)
+    }
     var editingSource by remember { mutableStateOf<SourceListItem?>(null) }
     var removingSource by remember { mutableStateOf<SourceListItem?>(null) }
     var editNameInput by rememberSaveable { mutableStateOf("") }
@@ -79,7 +92,7 @@ fun ManageSourcesSheet(
         if (pendingAdd && !isAdding && addErrorMessage == null) {
             pendingAdd = false
             urlInput = ""
-            selectedAddType = SourceTypes.RSS
+            selectedAddType = SourceTypeId.Rss
             showAddDialog = false
         }
     }
@@ -156,26 +169,23 @@ fun ManageSourcesSheet(
                     onClick = { selectedType = null },
                     label = { Text("All") },
                 )
-                FilterChip(
-                    selected = selectedType == SourceTypes.RSS,
-                    onClick = { selectedType = SourceTypes.RSS },
-                    label = { Text("RSS") },
-                )
-                FilterChip(
-                    selected = selectedType == SourceTypes.PODCAST,
-                    onClick = { selectedType = SourceTypes.PODCAST },
-                    label = { Text("Podcasts") },
-                )
-                FilterChip(
-                    selected = selectedType == SourceTypes.YOUTUBE,
-                    onClick = { selectedType = SourceTypes.YOUTUBE },
-                    label = { Text("YouTube") },
-                )
-                FilterChip(
-                    selected = selectedType == SourceTypes.MEDIUM,
-                    onClick = { selectedType = SourceTypes.MEDIUM },
-                    label = { Text("Medium") },
-                )
+                sourceTypeOptions.forEach { option ->
+                    FilterChip(
+                        selected = selectedType == option.id,
+                        onClick = { selectedType = option.id },
+                        enabled = option.isEnabled,
+                        label = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(
+                                    imageVector = option.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Text(option.label)
+                            }
+                        },
+                    )
+                }
             }
             if (sources.isEmpty()) {
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -203,7 +213,7 @@ fun ManageSourcesSheet(
                                     Text(source.name.ifBlank { "Unknown source" })
                                 },
                                 supportingContent = {
-                                    Text(syncRowLabel(source, isActive))
+                                    Text(syncRowLabel(source, isActive, sourceTypeOptions))
                                 },
                                 trailingContent = {
                                     if (isActive) {
@@ -259,6 +269,7 @@ fun ManageSourcesSheet(
     }
 
     if (showAddDialog) {
+        val selectedOption = sourceTypeOptions.firstOrNull { it.id == selectedAddType }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("Add source") },
@@ -268,28 +279,20 @@ fun ManageSourcesSheet(
                         value = urlInput,
                         onValueChange = { urlInput = it },
                         label = { Text("URL") },
-                        placeholder = { Text("https://example.com/feed.xml") },
+                        placeholder = {
+                            Text(selectedOption?.inputHint ?: "https://example.com/feed.xml")
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isAdding,
                     )
-                    if (selectedAddType == SourceTypes.YOUTUBE) {
+                    selectedOption?.let { option ->
+                        val helperText = when (option.inputMode) {
+                            SourceInputMode.UrlOnly -> "Paste a ${option.label} feed URL."
+                            SourceInputMode.UrlOrHandle -> "Paste a ${option.label} URL or handle."
+                        }
                         Text(
-                            text = "Paste a channel handle, channel URL/ID, or playlist URL.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (selectedAddType == SourceTypes.PODCAST) {
-                        Text(
-                            text = "Paste a podcast RSS feed URL.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (selectedAddType == SourceTypes.MEDIUM) {
-                        Text(
-                            text = "Paste a Medium handle, publication, or RSS feed URL.",
+                            text = helperText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -303,6 +306,7 @@ fun ManageSourcesSheet(
                     }
                     SourceTypePicker(
                         selectedType = selectedAddType,
+                        options = sourceTypeOptions,
                         onSelected = {
                             if (!isAdding) {
                                 selectedAddType = it
@@ -411,17 +415,10 @@ fun ManageSourcesSheet(
 
 @Composable
 private fun SourceTypePicker(
-    selectedType: String,
-    onSelected: (String) -> Unit,
+    selectedType: SourceTypeId,
+    options: List<SourceTypeUi>,
+    onSelected: (SourceTypeId) -> Unit,
 ) {
-    val options = listOf(
-        SourceTypeOption(SourceTypes.RSS, "RSS", true),
-        SourceTypeOption(SourceTypes.PODCAST, "Podcasts", true),
-        SourceTypeOption(SourceTypes.YOUTUBE, "YouTube", true),
-        SourceTypeOption(SourceTypes.MEDIUM, "Medium", true),
-        SourceTypeOption(SourceTypes.BLUESKY, "Bluesky", false),
-    )
-
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = "Source type",
@@ -433,21 +430,24 @@ private fun SourceTypePicker(
         ) {
             options.forEach { option ->
                 FilterChip(
-                    selected = option.type == selectedType,
-                    onClick = { onSelected(option.type) },
-                    enabled = option.enabled,
-                    label = { Text(option.label) },
+                    selected = option.id == selectedType,
+                    onClick = { onSelected(option.id) },
+                    enabled = option.isEnabled,
+                    label = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(
+                                imageVector = option.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text(option.label)
+                        }
+                    },
                 )
             }
         }
     }
 }
-
-private data class SourceTypeOption(
-    val type: String,
-    val label: String,
-    val enabled: Boolean,
-)
 
 private fun syncStatusLabel(status: SyncStatus): String {
     return if (status.isSyncing) {
@@ -467,21 +467,18 @@ private fun syncStatusLabel(status: SyncStatus): String {
     }
 }
 
-private fun syncRowLabel(source: SourceListItem, isActive: Boolean): String {
+private fun syncRowLabel(
+    source: SourceListItem,
+    isActive: Boolean,
+    options: List<SourceTypeUi>,
+): String {
     return if (isActive) {
-        "Syncing ${sourceTypeLabel(source.type)}"
+        "Syncing ${sourceTypeLabel(source.type, options)}"
     } else {
-        sourceTypeLabel(source.type)
+        sourceTypeLabel(source.type, options)
     }
 }
 
-private fun sourceTypeLabel(type: String): String {
-    return when (type) {
-        SourceTypes.RSS -> "RSS"
-        SourceTypes.PODCAST -> "Podcasts"
-        SourceTypes.YOUTUBE -> "YouTube"
-        SourceTypes.MEDIUM -> "Medium"
-        SourceTypes.BLUESKY -> "Bluesky"
-        else -> type.uppercase()
-    }
+private fun sourceTypeLabel(type: SourceTypeId, options: List<SourceTypeUi>): String {
+    return options.firstOrNull { it.id == type }?.label ?: type.value.uppercase(Locale.US)
 }

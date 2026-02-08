@@ -58,6 +58,7 @@ import com.milkilabs.majra.settings.ShapeDensity
 import com.milkilabs.majra.settings.ThemeMode
 import com.milkilabs.majra.settings.ThemePreferences
 import com.milkilabs.majra.settings.TypographyScale
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,10 +107,7 @@ fun MajraApp(
     val syncViewModel = viewModel<ManageSourcesViewModel>(
         factory = ManageSourcesViewModelFactory(
             repository = appDependencies.feedRepository,
-            rssSyncer = appDependencies.rssSyncer,
-            podcastSyncer = appDependencies.podcastSyncer,
-            youtubeSyncer = appDependencies.youtubeSyncer,
-            mediumSyncer = appDependencies.mediumSyncer,
+            sourceRegistry = appDependencies.sourceRegistry,
         ),
     )
     val syncStatus = syncViewModel.status.collectAsState()
@@ -121,15 +119,20 @@ fun MajraApp(
     val entryProvider = entryProvider<NavKey> {
         entry<Feed> {
             val viewModel = viewModel<FeedViewModel>(
-                factory = FeedViewModelFactory(appDependencies.feedRepository),
+                factory = FeedViewModelFactory(
+                    appDependencies.feedRepository,
+                    appDependencies.sourceRegistry,
+                ),
             )
             val items = viewModel.items.collectAsState()
             val filters = viewModel.filters.collectAsState()
             val sources = viewModel.sourceItems.collectAsState()
+            val typeOptions = viewModel.sourceTypeOptions()
             FeedScreen(
                 items = items.value,
                 filters = filters.value,
                 sources = sources.value,
+                sourceTypeOptions = typeOptions,
                 syncStatus = syncStatus.value,
                 snackbarHostState = snackbarHostState,
                 onRefresh = syncViewModel::syncAll,
@@ -221,7 +224,7 @@ fun MajraApp(
                     val sourceName = source?.name
                         ?.ifBlank { source.url }
                         ?: currentKey.sourceName.ifBlank { "Unknown source" }
-                    val sourceLabel = currentKey.sourceType.uppercase()
+                    val sourceLabel = currentKey.sourceType.value.uppercase(Locale.US)
                     "$sourceLabel · $sourceName"
                 }
                 else -> titleFor(currentKey, topLevelByKey)
@@ -298,6 +301,7 @@ fun MajraApp(
             sources = syncSources.value,
             isAdding = isAddingSource.value,
             addErrorMessage = addSourceError.value,
+            sourceTypeOptions = syncViewModel.typeOptions,
             onDismiss = { isManageSourcesOpen = false },
             onSyncAll = syncViewModel::syncAll,
             onSyncSource = syncViewModel::syncSource,

@@ -3,13 +3,15 @@ package com.milkilabs.majra.feed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.milkilabs.majra.core.repository.FeedRepository
+import com.milkilabs.majra.core.source.SourcePluginRegistry
 
 /** Factory for the main feed view model. */
 class FeedViewModelFactory(
     private val repository: FeedRepository,
+    private val sourceRegistry: SourcePluginRegistry,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return FeedViewModel(repository) as T
+        return FeedViewModel(repository, sourceRegistry) as T
     }
 }
 

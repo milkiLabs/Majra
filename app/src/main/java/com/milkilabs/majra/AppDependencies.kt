@@ -3,33 +3,35 @@ package com.milkilabs.majra
 import android.content.Context
 import com.prof18.rssparser.RssParserBuilder
 import okhttp3.OkHttpClient
-import com.milkilabs.majra.core.model.SourceTypes
 import com.milkilabs.majra.core.repository.FeedRepository
+import com.milkilabs.majra.core.source.SourcePluginRegistry
 import com.milkilabs.majra.core.viewer.ArticleViewer
 import com.milkilabs.majra.core.viewer.DefaultViewerRegistry
 import com.milkilabs.majra.core.viewer.ViewerRegistry
+import com.milkilabs.majra.bluesky.BlueskySourcePlugin
 import com.milkilabs.majra.data.db.AppDatabase
 import com.milkilabs.majra.data.repository.RoomFeedRepository
 import com.milkilabs.majra.bluesky.BlueskyArticleViewer
 import com.milkilabs.majra.medium.MediumArticleViewer
+import com.milkilabs.majra.medium.MediumSourcePlugin
 import com.milkilabs.majra.medium.MediumSyncer
 import com.milkilabs.majra.medium.MediumUrlResolver
 import com.milkilabs.majra.podcast.PodcastArticleViewer
+import com.milkilabs.majra.podcast.PodcastSourcePlugin
 import com.milkilabs.majra.podcast.PodcastSyncer
 import com.milkilabs.majra.rss.RssArticleViewer
+import com.milkilabs.majra.rss.RssSourcePlugin
 import com.milkilabs.majra.rss.RssSyncer
 import com.milkilabs.majra.youtube.YoutubeArticleViewer
+import com.milkilabs.majra.youtube.YoutubeSourcePlugin
 import com.milkilabs.majra.youtube.YoutubeSyncer
 import com.milkilabs.majra.youtube.YoutubeUrlResolver
 
 // Simple container that wires app-wide services without a full DI framework.
 class AppDependencies(
     val feedRepository: FeedRepository,
+    val sourceRegistry: SourcePluginRegistry,
     val viewerRegistry: ViewerRegistry,
-    val rssSyncer: RssSyncer,
-    val podcastSyncer: PodcastSyncer,
-    val youtubeSyncer: YoutubeSyncer,
-    val mediumSyncer: MediumSyncer,
 ) {
     companion object {
         // Centralized construction keeps setup consistent and makes testing easier to swap.
@@ -46,42 +48,46 @@ class AppDependencies(
             val fallbackViewer = ArticleViewer { article ->
                 rssViewer.Render(article)
             }
+            val rssSyncer = RssSyncer(
+                sourceDao = database.sourceDao(),
+                articleDao = database.articleDao(),
+                parser = rssParser,
+            )
+            val podcastSyncer = PodcastSyncer(
+                sourceDao = database.sourceDao(),
+                articleDao = database.articleDao(),
+                parser = rssParser,
+            )
+            val youtubeSyncer = YoutubeSyncer(
+                sourceDao = database.sourceDao(),
+                articleDao = database.articleDao(),
+                parser = rssParser,
+                urlResolver = YoutubeUrlResolver(httpClient),
+            )
+            val mediumSyncer = MediumSyncer(
+                sourceDao = database.sourceDao(),
+                articleDao = database.articleDao(),
+                parser = rssParser,
+                urlResolver = mediumUrlResolver,
+            )
+            val plugins = listOf(
+                RssSourcePlugin(rssSyncer, rssViewer),
+                PodcastSourcePlugin(podcastSyncer, podcastViewer),
+                YoutubeSourcePlugin(youtubeSyncer, youtubeViewer),
+                MediumSourcePlugin(mediumSyncer, mediumViewer),
+                BlueskySourcePlugin(blueskyViewer),
+            )
             return AppDependencies(
                 feedRepository = RoomFeedRepository(
                     database = database,
                     sourceDao = database.sourceDao(),
                     articleDao = database.articleDao(),
                 ),
-                rssSyncer = RssSyncer(
-                    sourceDao = database.sourceDao(),
-                    articleDao = database.articleDao(),
-                    parser = rssParser,
-                ),
-                podcastSyncer = PodcastSyncer(
-                    sourceDao = database.sourceDao(),
-                    articleDao = database.articleDao(),
-                    parser = rssParser,
-                ),
-                youtubeSyncer = YoutubeSyncer(
-                    sourceDao = database.sourceDao(),
-                    articleDao = database.articleDao(),
-                    parser = rssParser,
-                    urlResolver = YoutubeUrlResolver(httpClient),
-                ),
-                mediumSyncer = MediumSyncer(
-                    sourceDao = database.sourceDao(),
-                    articleDao = database.articleDao(),
-                    parser = rssParser,
-                    urlResolver = mediumUrlResolver,
-                ),
+                sourceRegistry = SourcePluginRegistry(plugins),
                 viewerRegistry = DefaultViewerRegistry(
-                    viewers = mapOf(
-                        SourceTypes.RSS to rssViewer,
-                        SourceTypes.PODCAST to podcastViewer,
-                        SourceTypes.YOUTUBE to youtubeViewer,
-                        SourceTypes.MEDIUM to mediumViewer,
-                        SourceTypes.BLUESKY to blueskyViewer,
-                    ),
+                    viewers = plugins.mapNotNull { plugin ->
+                        plugin.viewer?.let { viewer -> plugin.id to viewer }
+                    }.toMap(),
                     fallback = fallbackViewer,
                 ),
             )

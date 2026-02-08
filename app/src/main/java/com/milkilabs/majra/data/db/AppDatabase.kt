@@ -5,14 +5,16 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.RoomDatabase.Callback
+import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.model.SourceTypeId
 
 @Database(
     entities = [SourceEntity::class, ArticleEntity::class],
     version = 1,
     exportSchema = true,
 )
+@TypeConverters(SourceTypeIdConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun sourceDao(): SourceDao
     abstract fun articleDao(): ArticleDao
@@ -34,7 +36,7 @@ private class SeedCallback : Callback() {
         db.execSQL(
             """
             INSERT INTO sources (id, name, type, url)
-            VALUES ('source-rss-1', 'The Humane Web', '${SourceTypes.RSS}', 'https://example.com/feed.xml')
+            VALUES ('source-rss-1', 'The Humane Web', '${SourceTypeId.Rss.value}', 'https://example.com/feed.xml')
             """.trimIndent(),
         )
         db.execSQL(
@@ -44,7 +46,7 @@ private class SeedCallback : Callback() {
                 audioUrl, audioMimeType, audioDurationSeconds, episodeNumber, imageUrl,
                 publishedAtMillis, isSaved, readState
             ) VALUES (
-                'rss-101', 'source-rss-1', '${SourceTypes.RSS}', 'Designing calmer feeds',
+                'rss-101', 'source-rss-1', '${SourceTypeId.Rss.value}', 'Designing calmer feeds',
                 'Ideas for building quiet, focused reading experiences.',
                 'A gentle approach to reader-first design.',
                 'https://example.com/reader-first', 'Humane Web',

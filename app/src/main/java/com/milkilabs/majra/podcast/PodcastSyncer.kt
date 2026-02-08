@@ -10,7 +10,7 @@ import com.prof18.rssparser.model.RssItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.milkilabs.majra.core.model.ReadState
-import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.model.SourceTypeId
 import com.milkilabs.majra.data.db.ArticleDao
 import com.milkilabs.majra.data.db.ArticleEntity
 import com.milkilabs.majra.data.db.SourceDao
@@ -29,13 +29,13 @@ class PodcastSyncer(
     }
 
     suspend fun syncAll() = withContext(Dispatchers.IO) {
-        val sources = sourceDao.getSourcesByType(SourceTypes.PODCAST)
+        val sources = sourceDao.getSourcesByType(SourceTypeId.Podcast)
         syncSources(sources)
     }
 
     suspend fun syncSource(sourceId: String) = withContext(Dispatchers.IO) {
         val source = sourceDao.getSourceById(sourceId) ?: return@withContext
-        if (source.type != SourceTypes.PODCAST) return@withContext
+        if (source.type != SourceTypeId.Podcast) return@withContext
         syncSources(listOf(source))
     }
 

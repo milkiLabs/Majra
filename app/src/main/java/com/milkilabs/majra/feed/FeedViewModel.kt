@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.milkilabs.majra.core.model.ReadState
 import com.milkilabs.majra.core.model.Source
+import com.milkilabs.majra.core.model.SourceTypeId
 import com.milkilabs.majra.core.repository.FeedRepository
+import com.milkilabs.majra.core.source.SourcePluginRegistry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +20,7 @@ import kotlinx.coroutines.launch
  */
 class FeedViewModel(
     private val repository: FeedRepository,
+    private val sourceRegistry: SourcePluginRegistry,
 ) : ViewModel() {
     private val sourcesState: StateFlow<List<Source>> = repository.sources
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -88,7 +91,7 @@ class FeedViewModel(
     }
 
     /** Apply a source type filter; clears incompatible source selections. */
-    fun setSourceTypeFilter(type: String?) {
+    fun setSourceTypeFilter(type: SourceTypeId?) {
         val current = filtersState.value
         val nextSourceId = if (type == null) {
             null
@@ -130,4 +133,6 @@ class FeedViewModel(
             repository.markRead(articleId, state)
         }
     }
+
+    fun sourceTypeOptions() = sourceRegistry.typeOptions().filter { it.isEnabled }
 }

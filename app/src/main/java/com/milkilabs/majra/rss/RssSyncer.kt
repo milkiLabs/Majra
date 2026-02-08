@@ -10,7 +10,7 @@ import com.prof18.rssparser.model.RssItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.milkilabs.majra.core.model.ReadState
-import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.model.SourceTypeId
 import com.milkilabs.majra.data.db.ArticleDao
 import com.milkilabs.majra.data.db.ArticleEntity
 import com.milkilabs.majra.data.db.SourceDao
@@ -30,14 +30,14 @@ class RssSyncer(
 
     // Fetch RSS items for all RSS sources and upsert them into Room.
     suspend fun syncAll() = withContext(Dispatchers.IO) {
-        val sources = sourceDao.getSourcesByType(SourceTypes.RSS)
+        val sources = sourceDao.getSourcesByType(SourceTypeId.Rss)
         syncSources(sources)
     }
 
     // Fetch RSS items for a single source.
     suspend fun syncSource(sourceId: String) = withContext(Dispatchers.IO) {
         val source = sourceDao.getSourceById(sourceId) ?: return@withContext
-        if (source.type != SourceTypes.RSS) return@withContext
+        if (source.type != SourceTypeId.Rss) return@withContext
         syncSources(listOf(source))
     }
 

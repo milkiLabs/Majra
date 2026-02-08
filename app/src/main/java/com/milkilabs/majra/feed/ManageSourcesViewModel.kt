@@ -12,24 +12,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.milkilabs.majra.core.model.Source
-import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.model.SourceTypeId
 import com.milkilabs.majra.core.repository.FeedRepository
-import com.milkilabs.majra.medium.MediumResolveResult
-import com.milkilabs.majra.medium.MediumSyncer
-import com.milkilabs.majra.podcast.PodcastSyncer
-import com.milkilabs.majra.rss.RssSyncer
-import com.milkilabs.majra.youtube.YoutubeResolveResult
-import com.milkilabs.majra.youtube.YoutubeSyncer
+import com.milkilabs.majra.core.source.SourceInputMode
+import com.milkilabs.majra.core.source.SourcePluginRegistry
+import com.milkilabs.majra.core.source.SourceResolveResult
+import com.milkilabs.majra.core.source.SourceTypeUi
 
 /**
  * Centralized sync coordinator for the Manage Sources sheet.
  */
 class ManageSourcesViewModel(
     private val repository: FeedRepository,
-    private val rssSyncer: RssSyncer,
-    private val podcastSyncer: PodcastSyncer,
-    private val youtubeSyncer: YoutubeSyncer,
-    private val mediumSyncer: MediumSyncer,
+    private val sourceRegistry: SourcePluginRegistry,
 ) : ViewModel() {
     private val statusState = MutableStateFlow(SyncStatus())
     val status: StateFlow<SyncStatus> = statusState
@@ -53,6 +48,8 @@ class ManageSourcesViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val typeOptions: List<SourceTypeUi> = sourceRegistry.typeOptions()
+
     /** Sync every source sequentially to provide progress updates. */
     fun syncAll() {
         if (statusState.value.isSyncing) return
@@ -74,7 +71,7 @@ class ManageSourcesViewModel(
     /** Validate input, resolve to canonical feed URL, then add and sync. */
     fun addSource(
         url: String,
-        type: String,
+        type: SourceTypeId,
     ) {
         val trimmedUrl = url.trim()
         if (isAddingState.value) return
@@ -83,46 +80,38 @@ class ManageSourcesViewModel(
             addErrorState.value = "URL cannot be blank."
             return
         }
-        if (type == SourceTypes.RSS && !isValidUrl(trimmedUrl)) {
-            addErrorState.value = "Enter a valid URL."
+        val plugin = sourceRegistry.pluginFor(type)
+        if (plugin == null) {
+            addErrorState.value = "Unsupported source type."
             return
         }
-        if (type == SourceTypes.PODCAST && !isValidUrl(trimmedUrl)) {
-            addErrorState.value = "Enter a valid URL."
+        if (!plugin.isEnabled) {
+            addErrorState.value = "${plugin.displayName} sources are not supported yet."
             return
         }
-        if (type == SourceTypes.YOUTUBE && !isValidUrl(trimmedUrl) && !trimmedUrl.startsWith("@")) {
-            addErrorState.value = "Enter a valid YouTube URL or handle."
-            return
-        }
-        if (type == SourceTypes.MEDIUM && !isValidUrl(trimmedUrl) && !trimmedUrl.startsWith("@")) {
-            addErrorState.value = "Enter a valid Medium URL or handle."
+        val inputError = validateInput(trimmedUrl, plugin.inputMode, plugin.displayName)
+        if (inputError != null) {
+            addErrorState.value = inputError
             return
         }
         viewModelScope.launch {
             isAddingState.value = true
             try {
-                val resolved = when (type) {
-                    SourceTypes.RSS -> resolveRssSource(trimmedUrl)
-                    SourceTypes.PODCAST -> resolvePodcastSource(trimmedUrl)
-                    SourceTypes.YOUTUBE -> resolveYoutubeSource(trimmedUrl)
-                    SourceTypes.MEDIUM -> resolveMediumSource(trimmedUrl)
-                    else -> null
+                val resolved = plugin.resolve(trimmedUrl)
+                val finalUrl = when (resolved) {
+                    is SourceResolveResult.Error -> {
+                        addErrorState.value = resolved.message
+                        return@launch
+                    }
+                    is SourceResolveResult.Success -> resolved.url
                 }
-                if (resolved == null) {
-                    addErrorState.value = "Unsupported source type."
-                    return@launch
-                }
-                if (resolved.errorMessage != null) {
-                    addErrorState.value = resolved.errorMessage
-                    return@launch
-                }
-                val finalUrl = resolved.url
                 if (sourcesState.value.any { it.url.equals(finalUrl, ignoreCase = true) }) {
                     addErrorState.value = "Source already exists."
                     return@launch
                 }
-                val finalName = resolved.name?.ifBlank { null }
+                val finalName = (resolved as? SourceResolveResult.Success)
+                    ?.name
+                    ?.ifBlank { null }
                     ?: fallbackName(finalUrl)
                 val source = Source(
                     id = UUID.randomUUID().toString(),
@@ -193,60 +182,9 @@ class ManageSourcesViewModel(
     }
 
     private suspend fun syncSourceInternal(source: Source) {
-        when (source.type) {
-            SourceTypes.RSS -> rssSyncer.syncSource(source.id)
-            SourceTypes.PODCAST -> podcastSyncer.syncSource(source.id)
-            SourceTypes.YOUTUBE -> youtubeSyncer.syncSource(source.id)
-            SourceTypes.MEDIUM -> mediumSyncer.syncSource(source.id)
-            else -> Unit
-        }
+        val plugin = sourceRegistry.pluginFor(source.type) ?: return
+        plugin.syncSource(source.id)
     }
-
-    private suspend fun resolveRssSource(url: String): ResolvedSource {
-        val resolvedName = rssSyncer.resolveTitle(url)
-        return ResolvedSource(url = url, name = resolvedName, errorMessage = null)
-    }
-
-    private suspend fun resolvePodcastSource(url: String): ResolvedSource {
-        val resolvedName = podcastSyncer.resolveTitle(url)
-        return ResolvedSource(url = url, name = resolvedName, errorMessage = null)
-    }
-
-    private suspend fun resolveYoutubeSource(url: String): ResolvedSource {
-        return when (val result = youtubeSyncer.resolveSource(url)) {
-            is YoutubeResolveResult.Error -> ResolvedSource(
-                url = url,
-                name = null,
-                errorMessage = result.message,
-            )
-            is YoutubeResolveResult.Success -> ResolvedSource(
-                url = result.source.feedUrl,
-                name = result.source.displayName,
-                errorMessage = null,
-            )
-        }
-    }
-
-    private suspend fun resolveMediumSource(url: String): ResolvedSource {
-        return when (val result = mediumSyncer.resolveSource(url)) {
-            is MediumResolveResult.Error -> ResolvedSource(
-                url = url,
-                name = null,
-                errorMessage = result.message,
-            )
-            is MediumResolveResult.Success -> ResolvedSource(
-                url = result.source.feedUrl,
-                name = result.source.displayName,
-                errorMessage = null,
-            )
-        }
-    }
-
-    private data class ResolvedSource(
-        val url: String,
-        val name: String?,
-        val errorMessage: String?,
-    )
 
     // Keep URL checks lightweight while catching obvious mistakes.
     private fun isValidUrl(url: String): Boolean {
@@ -254,6 +192,25 @@ class ManageSourcesViewModel(
         val scheme = uri.scheme?.lowercase(Locale.US)
         return !scheme.isNullOrBlank() && !uri.host.isNullOrBlank() &&
             (scheme == "http" || scheme == "https")
+    }
+
+    private fun validateInput(
+        input: String,
+        inputMode: SourceInputMode,
+        displayName: String,
+    ): String? {
+        return when (inputMode) {
+            SourceInputMode.UrlOnly -> {
+                if (!isValidUrl(input)) "Enter a valid URL." else null
+            }
+            SourceInputMode.UrlOrHandle -> {
+                if (!isValidUrl(input) && !input.startsWith("@")) {
+                    "Enter a valid $displayName URL or handle."
+                } else {
+                    null
+                }
+            }
+        }
     }
 
     private fun fallbackName(url: String): String {

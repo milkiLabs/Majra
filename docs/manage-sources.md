@@ -11,9 +11,9 @@ Entry Point
 UI Behavior
 - Header shows current sync status and last synced time.
 - "Sync all now" triggers a full refresh across all sources.
-- "Add source" opens a dialog for adding RSS, YouTube, or Medium feeds.
+- "Add source" opens a dialog driven by plugin metadata.
 - Search box filters sources by name or URL.
-- Type chips filter the source list by RSS, YouTube, or Medium.
+- Type chips are populated from registered plugins (label + icon).
 - Each source row exposes sync, edit, and remove actions.
 - While syncing, a progress bar shows completed/total.
 
@@ -28,6 +28,6 @@ Related UX
 
 Implementation Notes
 - Manage Sources is coordinated in ManageSourcesViewModel.
-- Per-source sync uses syncSource(sourceId) in each syncer.
+- Per-source sync dispatches through SourcePluginRegistry.
 - Global sync uses sequential sync to surface progress.
-- Add source resolves URLs before storing them.
+- Add source resolves URLs via plugin.resolve(input).

@@ -3,6 +3,7 @@ package com.milkilabs.majra.feed
 import com.milkilabs.majra.core.model.Article
 import com.milkilabs.majra.core.model.ReadState
 import com.milkilabs.majra.core.model.Source
+import com.milkilabs.majra.core.model.SourceTypeId
 
 /**
  * UI-friendly representation of a feed item, enriched with source metadata.
@@ -12,7 +13,7 @@ data class FeedListItem(
     val sourceId: String,
     val title: String,
     val sourceName: String,
-    val sourceType: String,
+    val sourceType: SourceTypeId,
     val summary: String,
     val readState: ReadState,
 )
@@ -31,7 +32,7 @@ enum class FeedReadFilter {
  */
 data class FeedFilters(
     val readFilter: FeedReadFilter = FeedReadFilter.Unread,
-    val sourceType: String? = null,
+    val sourceType: SourceTypeId? = null,
     val sourceId: String? = null,
 )
 
@@ -41,7 +42,7 @@ data class FeedFilters(
 data class SourceListItem(
     val id: String,
     val name: String,
-    val type: String,
+    val type: SourceTypeId,
     val url: String,
 )
 

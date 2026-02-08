@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.milkilabs.majra.core.model.SourceTypeId
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -19,7 +20,7 @@ interface SourceDao {
     suspend fun countSources(): Int
 
     @Query("SELECT * FROM sources WHERE type = :type ORDER BY name")
-    suspend fun getSourcesByType(type: String): List<SourceEntity>
+    suspend fun getSourcesByType(type: SourceTypeId): List<SourceEntity>
 
     @Query("SELECT * FROM sources WHERE id = :sourceId LIMIT 1")
     suspend fun getSourceById(sourceId: String): SourceEntity?

@@ -2,6 +2,7 @@ package com.milkilabs.majra.navigation
 
 import androidx.navigation3.runtime.NavKey
 import kotlinx.serialization.Serializable
+import com.milkilabs.majra.core.model.SourceTypeId
 
 // Nav3 keys are the only thing stored in the back stack. They must be serializable.
 sealed interface MajraNavKey : NavKey
@@ -21,7 +22,7 @@ data object Settings : MajraNavKey
 data class ContentDetail(
     val contentId: String,
     val sourceId: String,
-    val sourceType: String,
+    val sourceType: SourceTypeId,
     val sourceName: String,
 ) : MajraNavKey
 

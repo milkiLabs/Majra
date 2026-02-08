@@ -1,9 +1,11 @@
 package com.milkilabs.majra.core.model
 
+import kotlinx.serialization.Serializable
+
 data class Source(
     val id: String,
     val name: String,
-    val type: String,
+    val type: SourceTypeId,
     val url: String,
 )
 
@@ -21,7 +23,7 @@ enum class ReadState {
 data class Article(
     val id: String,
     val sourceId: String,
-    val sourceType: String,
+    val sourceType: SourceTypeId,
     val title: String,
     val summary: String,
     val content: String?,
@@ -37,10 +39,46 @@ data class Article(
     val readState: ReadState,
 )
 
-object SourceTypes {
-    const val RSS = "rss"
-    const val PODCAST = "podcast"
-    const val YOUTUBE = "youtube"
-    const val MEDIUM = "medium"
-    const val BLUESKY = "bluesky"
+@Serializable
+sealed interface SourceTypeId {
+    val value: String
+
+    @Serializable
+    data object Rss : SourceTypeId {
+        override val value: String = "rss"
+    }
+
+    @Serializable
+    data object Podcast : SourceTypeId {
+        override val value: String = "podcast"
+    }
+
+    @Serializable
+    data object Youtube : SourceTypeId {
+        override val value: String = "youtube"
+    }
+
+    @Serializable
+    data object Medium : SourceTypeId {
+        override val value: String = "medium"
+    }
+
+    @Serializable
+    data object Bluesky : SourceTypeId {
+        override val value: String = "bluesky"
+    }
+
+    @Serializable
+    data class Custom(override val value: String) : SourceTypeId
+
+    companion object {
+        fun fromValue(value: String): SourceTypeId = when (value) {
+            Rss.value -> Rss
+            Podcast.value -> Podcast
+            Youtube.value -> Youtube
+            Medium.value -> Medium
+            Bluesky.value -> Bluesky
+            else -> Custom(value)
+        }
+    }
 }

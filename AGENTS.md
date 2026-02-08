@@ -10,6 +10,7 @@ Key paths
 - Theme prefs: `app/src/main/java/com/milkilabs/majra/settings/*`
 - Navigation doc: `docs/navigation.md`
 - Theme doc: `docs/theme.md`
+- Plugin doc: `docs/plugins.md`
 
 Code style
 - Kotlin style: `official`, 4-space indent, no tabs
@@ -22,6 +23,11 @@ Types & errors
 - Prefer non-null types; avoid `!!`
 - Use sealed classes/enums for closed sets
 - Fail fast for programmer errors; surface recoverable issues clearly
+
+Source plugins
+- Source types use `SourceTypeId` (sealed) with Room converters in `data/db/Converters.kt`
+- Register new sources via `SourcePlugin` + `SourcePluginRegistry` in `AppDependencies`
+- UI type chips/menus are driven by plugin metadata (label + icon)
 
 Comments
 - Add brief comments only for non-obvious logic or edge cases

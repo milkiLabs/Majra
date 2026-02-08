@@ -6,7 +6,7 @@ manual sync behavior, current limitations, and how sync status is surfaced.
 ## High-level Flow
 1) User triggers sync from Manage Sources or feed pull-to-refresh.
 2) ManageSourcesViewModel coordinates sync in sequence.
-3) Each source type fetches a feed and upserts articles into Room.
+3) Each plugin fetches a feed and upserts articles into Room.
 4) UI observes sync status and shows progress or errors.
 
 ## Where Sync Starts
@@ -16,6 +16,7 @@ manual sync behavior, current limitations, and how sync status is surfaced.
 ## Orchestration
 - ManageSourcesViewModel is the sync coordinator.
 - Sync runs sequentially for predictable progress updates.
+- Sync dispatch uses SourcePluginRegistry for the source type.
 - SyncStatus exposes:
   - isSyncing
   - completed/total
@@ -39,7 +40,9 @@ manual sync behavior, current limitations, and how sync status is surfaced.
 
 ## Data Storage
 - Sources and articles are stored in Room.
-- Article fields: title, summary, content, url, author, publishedAtMillis.
+- Article fields: title, summary, content, url, author,
+  audioUrl, audioMimeType, audioDurationSeconds, episodeNumber, imageUrl,
+  publishedAtMillis.
 - User state: readState and isSaved are preserved when items are refreshed.
 
 ## Current Limitations

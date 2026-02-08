@@ -10,7 +10,7 @@ import com.prof18.rssparser.model.RssItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.milkilabs.majra.core.model.ReadState
-import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.model.SourceTypeId
 import com.milkilabs.majra.data.db.ArticleDao
 import com.milkilabs.majra.data.db.ArticleEntity
 import com.milkilabs.majra.data.db.SourceDao
@@ -43,14 +43,14 @@ class YoutubeSyncer(
 
     /** Fetch YouTube feed items for all stored YouTube sources and upsert them into Room. */
     suspend fun syncAll() = withContext(Dispatchers.IO) {
-        val sources = sourceDao.getSourcesByType(SourceTypes.YOUTUBE)
+        val sources = sourceDao.getSourcesByType(SourceTypeId.Youtube)
         syncSources(sources)
     }
 
     /** Fetch YouTube feed items for a single stored source. */
     suspend fun syncSource(sourceId: String) = withContext(Dispatchers.IO) {
         val source = sourceDao.getSourceById(sourceId) ?: return@withContext
-        if (source.type != SourceTypes.YOUTUBE) return@withContext
+        if (source.type != SourceTypeId.Youtube) return@withContext
         syncSources(listOf(source))
     }
 

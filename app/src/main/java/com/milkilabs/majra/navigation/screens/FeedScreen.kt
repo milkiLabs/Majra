@@ -61,7 +61,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.Orientation
 import com.milkilabs.majra.core.model.ReadState
-import com.milkilabs.majra.core.model.SourceTypes
+import com.milkilabs.majra.core.model.SourceTypeId
+import com.milkilabs.majra.core.source.SourceTypeUi
+import java.util.Locale
 import com.milkilabs.majra.feed.FeedFilters
 import com.milkilabs.majra.feed.FeedListItem
 import com.milkilabs.majra.feed.FeedReadFilter
@@ -77,13 +79,14 @@ fun FeedScreen(
     items: List<FeedListItem>,
     filters: FeedFilters,
     sources: List<SourceListItem>,
+    sourceTypeOptions: List<SourceTypeUi>,
     syncStatus: SyncStatus,
     snackbarHostState: SnackbarHostState,
     onRefresh: () -> Unit,
     onContentSelected: (FeedListItem) -> Unit,
     onCycleReadFilter: () -> Unit,
     onResetReadFilter: () -> Unit,
-    onSourceTypeSelected: (String?) -> Unit,
+    onSourceTypeSelected: (SourceTypeId?) -> Unit,
     onSourceSelected: (String?) -> Unit,
     onUpdateReadState: (String, ReadState) -> Unit,
 ) {
@@ -205,7 +208,18 @@ fun FeedScreen(
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    Text(sourceTypeLabel(filters.sourceType))
+                                    val selectedOption = sourceTypeOption(
+                                        filters.sourceType,
+                                        sourceTypeOptions,
+                                    )
+                                    selectedOption?.let { option ->
+                                        Icon(
+                                            imageVector = option.icon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                    Text(sourceTypeLabel(filters.sourceType, sourceTypeOptions))
                                     if (filters.sourceType != null) {
                                         Icon(
                                             imageVector = Icons.Filled.Close,
@@ -235,34 +249,27 @@ fun FeedScreen(
                                     onSourceTypeSelected(null)
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text("RSS") },
-                                onClick = {
-                                    typeMenuExpanded = false
-                                    onSourceTypeSelected(SourceTypes.RSS)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Podcasts") },
-                                onClick = {
-                                    typeMenuExpanded = false
-                                    onSourceTypeSelected(SourceTypes.PODCAST)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("YouTube") },
-                                onClick = {
-                                    typeMenuExpanded = false
-                                    onSourceTypeSelected(SourceTypes.YOUTUBE)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Medium") },
-                                onClick = {
-                                    typeMenuExpanded = false
-                                    onSourceTypeSelected(SourceTypes.MEDIUM)
-                                },
-                            )
+                            sourceTypeOptions.filter { it.isEnabled }.forEach { option ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                imageVector = option.icon,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                            Text(option.label)
+                                        }
+                                    },
+                                    onClick = {
+                                        typeMenuExpanded = false
+                                        onSourceTypeSelected(option.id)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -515,7 +522,7 @@ fun FeedScreen(
                                         Text(source.name.ifBlank { "Unknown source" })
                                     },
                                     supportingContent = {
-                                        Text(sourceTypeLabel(source.type))
+                                        Text(sourceTypeLabel(source.type, sourceTypeOptions))
                                     },
                                 )
                             }
@@ -535,14 +542,14 @@ private fun readFilterLabel(filter: FeedReadFilter): String {
     }
 }
 
-private fun sourceTypeLabel(type: String?): String {
-    return when (type) {
-        null -> "All types"
-        SourceTypes.RSS -> "RSS"
-        SourceTypes.PODCAST -> "Podcasts"
-        SourceTypes.YOUTUBE -> "YouTube"
-        SourceTypes.MEDIUM -> "Medium"
-        SourceTypes.BLUESKY -> "Bluesky"
-        else -> type.uppercase()
-    }
+private fun sourceTypeOption(
+    type: SourceTypeId?,
+    options: List<SourceTypeUi>,
+): SourceTypeUi? {
+    return type?.let { current -> options.firstOrNull { it.id == current } }
+}
+
+private fun sourceTypeLabel(type: SourceTypeId?, options: List<SourceTypeUi>): String {
+    if (type == null) return "All types"
+    return options.firstOrNull { it.id == type }?.label ?: type.value.uppercase(Locale.US)
 }

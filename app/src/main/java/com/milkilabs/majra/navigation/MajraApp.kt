@@ -108,8 +108,12 @@ fun MajraApp(
                 factory = FeedViewModelFactory(appDependencies.feedRepository),
             )
             val items = viewModel.items.collectAsState()
+            val filters = viewModel.filters.collectAsState()
+            val sources = viewModel.sourceItems.collectAsState()
             FeedScreen(
                 items = items.value,
+                filters = filters.value,
+                sources = sources.value,
                 onContentSelected = { item ->
                     navigator.navigate(
                         ContentDetail(
@@ -120,6 +124,10 @@ fun MajraApp(
                         )
                     )
                 },
+                onCycleReadFilter = viewModel::cycleReadFilter,
+                onResetReadFilter = viewModel::resetReadFilter,
+                onSourceTypeSelected = viewModel::setSourceTypeFilter,
+                onSourceSelected = viewModel::setSourceFilter,
             )
         }
         entry<Sources> {

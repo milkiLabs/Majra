@@ -2,6 +2,13 @@ review new architure and docs/ and specially the article schema
 look at resource syncerrs rsssycn,ytsync etc and see if you can reuse code
 see if you can reuse code in resource viewers and have consistant ui/ux but still use unique features of each source
 
+review the settigns page and data persistance there, make dir for and and spit it , remove dummy cposcomposes in settings.
+
+make navigation survive process kill so if user was reading an article and came back it's still on that article
+
+Add per-source sync results (including lastError per source) and update UI surfaces to show partial failures
+
+
 add support for images in rss,medium?
 add support for open graph images
 add support for favicon

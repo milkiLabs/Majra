@@ -46,6 +46,9 @@ interface ArticleDao {
     @Query("SELECT * FROM articles WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<ArticleEntity>
 
+    @Query("SELECT COUNT(*) FROM articles")
+    suspend fun countArticles(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(articles: List<ArticleEntity>)
 

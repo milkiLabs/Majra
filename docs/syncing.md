@@ -54,3 +54,11 @@ manual sync behavior, current limitations, and how sync status is surfaced.
 - Periodic background sync using WorkManager.
 - Per-source error history and last success timestamps.
 - Optional background sync toggle in settings.
+
+## Background Sync (WorkManager)
+- Background sync uses WorkManager with network + battery-not-low constraints.
+- Interval is user-configurable in Settings (6h, 12h, 24h).
+- Notifications are opt-in and only fire when 3+ new items arrive
+  and at most once every 6 hours.
+- Sync metadata is stored in DataStore (last attempt, last success,
+  last article count, last notification).

@@ -55,6 +55,7 @@ import com.milkilabs.majra.feed.ManageSourcesViewModel
 import com.milkilabs.majra.feed.ManageSourcesViewModelFactory
 import com.milkilabs.majra.settings.AccentPalette
 import com.milkilabs.majra.settings.ShapeDensity
+import com.milkilabs.majra.settings.SyncPreferences
 import com.milkilabs.majra.settings.ThemeMode
 import com.milkilabs.majra.settings.ThemePreferences
 import com.milkilabs.majra.settings.TypographyScale
@@ -65,10 +66,14 @@ import java.util.Locale
 fun MajraApp(
     appDependencies: AppDependencies,
     themePreferences: ThemePreferences,
+    syncPreferences: SyncPreferences,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAccentPaletteChange: (AccentPalette) -> Unit,
     onTypographyScaleChange: (TypographyScale) -> Unit,
     onShapeDensityChange: (ShapeDensity) -> Unit,
+    onBackgroundSyncToggle: (Boolean) -> Unit,
+    onSyncIntervalChange: (Int) -> Unit,
+    onNotifyToggle: (Boolean) -> Unit,
 ) {
     val topLevelDestinations = remember {
         listOf(
@@ -175,10 +180,14 @@ fun MajraApp(
         entry<Settings> {
             SettingsScreen(
                 themePreferences = themePreferences,
+                syncPreferences = syncPreferences,
                 onThemeModeChange = onThemeModeChange,
                 onAccentPaletteChange = onAccentPaletteChange,
                 onTypographyScaleChange = onTypographyScaleChange,
                 onShapeDensityChange = onShapeDensityChange,
+                onBackgroundSyncToggle = onBackgroundSyncToggle,
+                onSyncIntervalChange = onSyncIntervalChange,
+                onNotifyToggle = onNotifyToggle,
             )
         }
         entry<ContentDetail> { key ->

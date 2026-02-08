@@ -1,6 +1,7 @@
 package com.milkilabs.majra.navigation
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.milkilabs.majra.settings.AccentPalette
 import com.milkilabs.majra.settings.ShapeDensity
+import com.milkilabs.majra.settings.SyncPreferences
 import com.milkilabs.majra.settings.ThemeMode
 import com.milkilabs.majra.settings.ThemePreferences
 import com.milkilabs.majra.settings.TypographyScale
@@ -32,14 +35,19 @@ import com.milkilabs.majra.settings.TypographyScale
 @Composable
 fun SettingsScreen(
     themePreferences: ThemePreferences,
+    syncPreferences: SyncPreferences,
     onThemeModeChange: (ThemeMode) -> Unit,
     onAccentPaletteChange: (AccentPalette) -> Unit,
     onTypographyScaleChange: (TypographyScale) -> Unit,
     onShapeDensityChange: (ShapeDensity) -> Unit,
+    onBackgroundSyncToggle: (Boolean) -> Unit,
+    onSyncIntervalChange: (Int) -> Unit,
+    onNotifyToggle: (Boolean) -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
         Text(
@@ -54,6 +62,13 @@ fun SettingsScreen(
             onAccentPaletteChange = onAccentPaletteChange,
             onTypographyScaleChange = onTypographyScaleChange,
             onShapeDensityChange = onShapeDensityChange,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        BackgroundSyncSection(
+            syncPreferences = syncPreferences,
+            onBackgroundSyncToggle = onBackgroundSyncToggle,
+            onSyncIntervalChange = onSyncIntervalChange,
+            onNotifyToggle = onNotifyToggle,
         )
         Spacer(modifier = Modifier.height(12.dp))
         Card {
@@ -79,6 +94,81 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.width(12.dp))
             Button(onClick = {}) {
                 Text("Manage sources")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackgroundSyncSection(
+    syncPreferences: SyncPreferences,
+    onBackgroundSyncToggle: (Boolean) -> Unit,
+    onSyncIntervalChange: (Int) -> Unit,
+    onNotifyToggle: (Boolean) -> Unit,
+) {
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Background sync",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            SettingOption(
+                title = "Sync in the background",
+                subtitle = "Runs when you are on Wi-Fi or cellular and battery is not low",
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = if (syncPreferences.isBackgroundSyncEnabled) "On" else "Off",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Switch(
+                        checked = syncPreferences.isBackgroundSyncEnabled,
+                        onCheckedChange = onBackgroundSyncToggle,
+                    )
+                }
+            }
+            SettingOption(
+                title = "Sync interval",
+                subtitle = "How often Majra checks for updates",
+            ) {
+                val options = listOf(6, 12, 24)
+                OptionChips(
+                    options = options,
+                    selected = syncPreferences.syncIntervalHours,
+                    onSelected = onSyncIntervalChange,
+                    label = { value -> "${value}h" },
+                    enabled = syncPreferences.isBackgroundSyncEnabled,
+                )
+            }
+            SettingOption(
+                title = "Notify for new items",
+                subtitle = "Only when 3+ items arrive, no more than every 6 hours",
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = if (syncPreferences.notifyOnNewItems) "On" else "Off",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Switch(
+                        checked = syncPreferences.notifyOnNewItems,
+                        onCheckedChange = onNotifyToggle,
+                        enabled = syncPreferences.isBackgroundSyncEnabled,
+                    )
+                }
             }
         }
     }
@@ -180,6 +270,7 @@ private fun <T> OptionChips(
     selected: T,
     onSelected: (T) -> Unit,
     label: (T) -> String,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -189,6 +280,7 @@ private fun <T> OptionChips(
             FilterChip(
                 selected = option == selected,
                 onClick = { onSelected(option) },
+                enabled = enabled,
                 label = { Text(label(option)) },
             )
         }

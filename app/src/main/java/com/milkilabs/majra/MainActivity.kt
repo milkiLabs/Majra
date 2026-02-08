@@ -23,14 +23,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.milkilabs.majra.navigation.MajraApp
+import com.milkilabs.majra.settings.SyncPreferences
+import com.milkilabs.majra.settings.SyncPreferencesRepository
+import com.milkilabs.majra.settings.syncPreferencesDataStore
 import com.milkilabs.majra.settings.ThemePreferences
 import com.milkilabs.majra.settings.ThemePreferencesRepository
 import com.milkilabs.majra.settings.themePreferencesDataStore
+import com.milkilabs.majra.sync.SyncWorkScheduler
 import com.milkilabs.majra.ui.theme.MajraTheme
 
 class MainActivity : ComponentActivity() {
     private val themePreferencesRepository by lazy {
         ThemePreferencesRepository(applicationContext.themePreferencesDataStore)
+    }
+    private val syncPreferencesRepository by lazy {
+        SyncPreferencesRepository(applicationContext.syncPreferencesDataStore)
     }
     // Keep the splash screen visible until app dependencies are ready.
     private var isAppReady by mutableStateOf(false)
@@ -42,6 +49,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themePreferences by themePreferencesRepository.themePreferences.collectAsState(
                 initial = ThemePreferences(),
+            )
+            val syncPreferences by syncPreferencesRepository.syncPreferences.collectAsState(
+                initial = SyncPreferences(),
             )
             val scope = rememberCoroutineScope()
             val appDependencies by produceState<AppDependencies?>(initialValue = null) {
@@ -64,6 +74,7 @@ class MainActivity : ComponentActivity() {
                     MajraApp(
                         appDependencies = appDependencies!!,
                         themePreferences = themePreferences,
+                        syncPreferences = syncPreferences,
                         onThemeModeChange = { mode ->
                             scope.launch { themePreferencesRepository.setThemeMode(mode) }
                         },
@@ -76,8 +87,30 @@ class MainActivity : ComponentActivity() {
                         onShapeDensityChange = { density ->
                             scope.launch { themePreferencesRepository.setShapeDensity(density) }
                         },
+                        onBackgroundSyncToggle = { enabled ->
+                            scope.launch {
+                                syncPreferencesRepository.setBackgroundSyncEnabled(enabled)
+                            }
+                        },
+                        onSyncIntervalChange = { hours ->
+                            scope.launch {
+                                syncPreferencesRepository.setSyncIntervalHours(hours)
+                            }
+                        },
+                        onNotifyToggle = { enabled ->
+                            scope.launch {
+                                syncPreferencesRepository.setNotifyOnNewItems(enabled)
+                            }
+                        },
                     )
                 }
+            }
+
+            LaunchedEffect(syncPreferences) {
+                SyncWorkScheduler.updateSchedule(
+                    context = applicationContext,
+                    preferences = syncPreferences,
+                )
             }
         }
     }

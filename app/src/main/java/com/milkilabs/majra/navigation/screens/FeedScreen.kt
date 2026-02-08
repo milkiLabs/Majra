@@ -105,8 +105,12 @@ fun FeedScreen(
     val pullRefreshState = rememberPullRefreshState(
         refreshing = isPullRefreshing,
         onRefresh = {
-            isPullRefreshing = true
-            onRefresh()
+            if (syncStatus.isSyncing || sources.isEmpty()) {
+                isPullRefreshing = false
+            } else {
+                isPullRefreshing = true
+                onRefresh()
+            }
         },
     )
     val selectedSourceName = sources.firstOrNull { it.id == filters.sourceId }

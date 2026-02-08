@@ -204,13 +204,21 @@ class ManageSourcesViewModel(
                 if (!isValidUrl(input)) "Enter a valid URL." else null
             }
             SourceInputMode.UrlOrHandle -> {
-                if (!isValidUrl(input) && !input.startsWith("@")) {
-                    "Enter a valid $displayName URL or handle."
-                } else {
-                    null
+                val trimmed = input.trim()
+                when {
+                    trimmed.startsWith("@") -> null
+                    isValidUrl(trimmed) -> null
+                    isLikelyUrlWithoutScheme(trimmed) -> null
+                    else -> "Enter a valid $displayName URL or handle."
                 }
             }
         }
+    }
+
+    private fun isLikelyUrlWithoutScheme(input: String): Boolean {
+        if (input.startsWith("http://") || input.startsWith("https://")) return false
+        if (input.contains(" ")) return false
+        return input.contains(".")
     }
 
     private fun fallbackName(url: String): String {

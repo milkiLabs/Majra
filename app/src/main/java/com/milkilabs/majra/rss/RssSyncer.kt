@@ -46,8 +46,8 @@ class RssSyncer(
 
         val pendingArticles = mutableListOf<ArticleEntity>()
         sources.forEach { source ->
-            val channel = runCatching { parser.getRssChannel(source.url) }.getOrNull()
-            val items = channel?.items.orEmpty()
+            val channel = parser.getRssChannel(source.url)
+            val items = channel.items.orEmpty()
             if (items.isEmpty()) return@forEach
 
             val candidates = items.mapNotNull { item ->
@@ -75,8 +75,7 @@ class RssSyncer(
 
             if (candidates.isEmpty()) return@forEach
 
-            val existing = articleDao.getByIds(candidates.map { it.id })
-                .associateBy { it.id }
+            val existing = fetchExisting(candidates.map { it.id })
             // Preserve user state while refreshing fetched fields.
             val merged = candidates.map { candidate ->
                 val current = existing[candidate.id]
@@ -98,6 +97,17 @@ class RssSyncer(
         if (pendingArticles.isNotEmpty()) {
             articleDao.upsertAll(pendingArticles)
         }
+    }
+
+    private suspend fun fetchExisting(ids: List<String>): Map<String, ArticleEntity> {
+        if (ids.isEmpty()) return emptyMap()
+        val results = mutableMapOf<String, ArticleEntity>()
+        ids.chunked(500).forEach { chunk ->
+            articleDao.getByIds(chunk).forEach { entity ->
+                results[entity.id] = entity
+            }
+        }
+        return results
     }
 
     private fun stableId(sourceId: String, stableKey: String): String {

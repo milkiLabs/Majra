@@ -1,3 +1,7 @@
+review new architure and docs/ and specially the article schema
+look at resource syncerrs rsssycn,ytsync etc and see if you can reuse code
+see if you can reuse code in resource viewers and have consistant ui/ux but still use unique features of each source
+
 add support for images in rss,medium?
 add support for open graph images
 add support for favicon

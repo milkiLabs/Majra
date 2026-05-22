@@ -56,6 +56,9 @@ import com.milki.majra.ui.login.LoginScreen
 import com.milki.majra.ui.profile.ProfilePostsScreen
 import com.milki.majra.ui.theme.MajraTheme
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.ui.PlayerView
 
 class MainActivity : ComponentActivity() {
     private val container by lazy { AppContainer(applicationContext) }
@@ -83,7 +86,7 @@ class MainActivity : ComponentActivity() {
                         viewModel = feedViewModel,
                         container = container,
                         videoPlaybackController = videoPlaybackController,
-                        onEnterPictureInPicture = ::enterVideoPictureInPicture,
+                        onEnterPictureInPicture = ::enterPipForVideo,
                     )
                 }
             }
@@ -92,7 +95,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         if (videoPlaybackController.hasActivePlayback()) {
-            enterVideoPictureInPicture()
+            enterPipForVideo()
         }
         super.onUserLeaveHint()
     }
@@ -110,7 +113,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun enterVideoPictureInPicture() {
+    private fun enterPipForVideo() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !videoPlaybackController.hasActivePlayback()) {
             return
         }
@@ -131,6 +134,28 @@ fun MajraApp(
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
 ) {
+    val playbackState by videoPlaybackController.state.collectAsState()
+    val isInPip = playbackState.isInPictureInPicture
+
+    // In PiP mode: render ONLY the video player fullscreen, no app chrome
+    if (isInPip && playbackState.activeMediaKey != null) {
+        AndroidView(
+            factory = { context ->
+                PlayerView(context).apply {
+                    useController = false
+                    player = videoPlaybackController.player
+                }
+            },
+            update = { view ->
+                if (view.player !== videoPlaybackController.player) {
+                    view.player = videoPlaybackController.player
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
+
     val state by viewModel.uiState.collectAsState()
     val backStack = remember { mutableStateListOf<Any>(HomeRoute) }
     val scope = rememberCoroutineScope()

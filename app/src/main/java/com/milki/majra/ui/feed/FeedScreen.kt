@@ -1,8 +1,12 @@
 package com.milki.majra.ui.feed
 
 import com.milki.majra.data.model.Platform
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +27,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,6 +40,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -42,6 +50,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
@@ -69,6 +80,7 @@ import com.milki.majra.data.model.SocialPost
 import com.milki.majra.data.model.SocialProfile
 import com.milki.majra.media.VideoPlaybackController
 import com.milki.majra.media.VideoQuality
+import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.max
@@ -510,15 +522,30 @@ internal fun PagerMediaItem(
     val isActiveVideo = item.isVideo && playbackState.activeMediaKey == mediaKey
 
     if (item.isVideo && isActiveVideo) {
+        var controlsVisible by remember { mutableStateOf(true) }
+        var hideTimestamp by remember { mutableLongStateOf(0L) }
+
+        // Auto-hide controls after 3 seconds
+        LaunchedEffect(hideTimestamp) {
+            if (controlsVisible) {
+                delay(3_000)
+                controlsVisible = false
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pauseWhenMostlyHidden(mediaKey, videoPlaybackController),
+                .pauseWhenMostlyHidden(mediaKey, videoPlaybackController)
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                    controlsVisible = !controlsVisible
+                    if (controlsVisible) hideTimestamp = System.nanoTime()
+                },
         ) {
             AndroidView(
                 factory = { context ->
                     PlayerView(context).apply {
-                        useController = true
+                        useController = false
                         player = videoPlaybackController.player
                     }
                 },
@@ -529,12 +556,13 @@ internal fun PagerMediaItem(
                 },
                 modifier = Modifier.fillMaxSize(),
             )
-            VideoOverlayControls(
+            VideoControls(
                 mediaKey = mediaKey,
                 videoUrl = item.videoUrl.orEmpty(),
                 videoPlaybackController = videoPlaybackController,
                 onEnterPictureInPicture = onEnterPictureInPicture,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                visible = controlsVisible,
+                onInteraction = { hideTimestamp = System.nanoTime() },
             )
         }
     } else {
@@ -586,76 +614,208 @@ internal fun PagerMediaItem(
 }
 
 @Composable
-private fun VideoOverlayControls(
+private fun VideoControls(
     mediaKey: String,
     videoUrl: String,
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
-    modifier: Modifier = Modifier,
+    visible: Boolean,
+    onInteraction: () -> Unit,
 ) {
     val playbackState by videoPlaybackController.state.collectAsState()
+    val player = videoPlaybackController.player
     var speedMenuOpen by remember { mutableStateOf(false) }
     var qualityMenuOpen by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(
-            onClick = { videoPlaybackController.toggle(mediaKey, videoUrl) },
-        ) {
-            Text(
-                text = if (playbackState.isPlaying) "Pause" else "Play",
-                color = Color.White,
-            )
-        }
-        Box {
-            TextButton(onClick = { speedMenuOpen = true }) {
-                Text("${playbackState.playbackSpeed.formatSpeed()}x", color = Color.White)
+    // Track position for the seekbar
+    var positionMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var seekValue by remember { mutableFloatStateOf(0f) }
+
+    // Poll player position while playing
+    LaunchedEffect(playbackState.isPlaying, playbackState.activeMediaKey) {
+        while (true) {
+            if (!isSeeking) {
+                positionMs = player.currentPosition.coerceAtLeast(0L)
             }
-            DropdownMenu(
-                expanded = speedMenuOpen,
-                onDismissRequest = { speedMenuOpen = false },
-            ) {
-                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
-                    DropdownMenuItem(
-                        text = { Text("${speed.formatSpeed()}x") },
-                        onClick = {
-                            videoPlaybackController.setPlaybackSpeed(speed)
-                            speedMenuOpen = false
-                        },
-                    )
-                }
-            }
-        }
-        Box {
-            TextButton(onClick = { qualityMenuOpen = true }) {
-                Text(playbackState.quality.label, color = Color.White)
-            }
-            DropdownMenu(
-                expanded = qualityMenuOpen,
-                onDismissRequest = { qualityMenuOpen = false },
-            ) {
-                VideoQuality.entries.forEach { quality ->
-                    DropdownMenuItem(
-                        text = { Text(quality.label) },
-                        onClick = {
-                            videoPlaybackController.setQuality(quality)
-                            qualityMenuOpen = false
-                        },
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        TextButton(onClick = onEnterPictureInPicture) {
-            Text("PiP", color = Color.White)
+            durationMs = player.duration.let { if (it < 0) 0L else it }
+            delay(250)
         }
     }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Gradient scrim at bottom
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
+                        )
+                    )
+            )
+
+            // Center play/pause button
+            IconButton(
+                onClick = {
+                    videoPlaybackController.toggle(mediaKey, videoUrl)
+                    onInteraction()
+                },
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f)),
+            ) {
+                Icon(
+                    imageVector = if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+
+            // Bottom controls
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp),
+            ) {
+                // Seekbar
+                val sliderPosition = if (isSeeking) {
+                    seekValue
+                } else {
+                    if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
+                }
+                Slider(
+                    value = sliderPosition,
+                    onValueChange = { value ->
+                        isSeeking = true
+                        seekValue = value
+                        onInteraction()
+                    },
+                    onValueChangeFinished = {
+                        val seekTo = (seekValue * durationMs).toLong()
+                        player.seekTo(seekTo)
+                        positionMs = seekTo
+                        isSeeking = false
+                        onInteraction()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                    ),
+                )
+
+                // Time + controls row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Timestamp
+                    Text(
+                        text = "${formatDuration(positionMs)} / ${formatDuration(durationMs)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                    )
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // Speed
+                    Box {
+                        TextButton(onClick = {
+                            speedMenuOpen = true
+                            onInteraction()
+                        }) {
+                            Text(
+                                text = "${playbackState.playbackSpeed.formatSpeed()}x",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = speedMenuOpen,
+                            onDismissRequest = { speedMenuOpen = false },
+                        ) {
+                            listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
+                                DropdownMenuItem(
+                                    text = { Text("${speed.formatSpeed()}x") },
+                                    onClick = {
+                                        videoPlaybackController.setPlaybackSpeed(speed)
+                                        speedMenuOpen = false
+                                        onInteraction()
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    // Quality
+                    Box {
+                        TextButton(onClick = {
+                            qualityMenuOpen = true
+                            onInteraction()
+                        }) {
+                            Text(
+                                text = playbackState.quality.label,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = qualityMenuOpen,
+                            onDismissRequest = { qualityMenuOpen = false },
+                        ) {
+                            VideoQuality.entries.forEach { quality ->
+                                DropdownMenuItem(
+                                    text = { Text(quality.label) },
+                                    onClick = {
+                                        videoPlaybackController.setQuality(quality)
+                                        qualityMenuOpen = false
+                                        onInteraction()
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    // PiP
+                    TextButton(onClick = {
+                        onEnterPictureInPicture()
+                        onInteraction()
+                    }) {
+                        Text(
+                            text = "PiP",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSeconds = (ms / 1_000).toInt()
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }
 
 private fun Modifier.pauseWhenMostlyHidden(

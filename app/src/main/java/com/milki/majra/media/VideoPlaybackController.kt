@@ -1,12 +1,16 @@
 package com.milki.majra.media
 
+import android.content.ComponentName
 import android.content.Context
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -24,80 +28,117 @@ enum class VideoQuality(
 }
 
 data class VideoPlaybackState(
+    val player: Player? = null,
     val activeMediaKey: String? = null,
     val isPlaying: Boolean = false,
     val playbackSpeed: Float = 1f,
     val quality: VideoQuality = VideoQuality.Auto,
     val isInPictureInPicture: Boolean = false,
     val aspectRatio: Float = 1f,
+    val isFullscreen: Boolean = false,
 )
 
 class VideoPlaybackController(context: Context) {
     private val appContext = context.applicationContext
 
-    val player: ExoPlayer = ExoPlayer.Builder(appContext)
-        .setHandleAudioBecomingNoisy(true)
-        .build()
-
-    private val mediaSession = MediaSession.Builder(appContext, player).build()
-
     private val _state = MutableStateFlow(VideoPlaybackState())
     val state: StateFlow<VideoPlaybackState> = _state
 
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _state.update { it.copy(isPlaying = isPlaying) }
+        }
+
+        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+            _state.update { it.copy(playbackSpeed = playbackParameters.speed) }
+        }
+
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            val ratio = if (videoSize.height > 0) {
+                videoSize.width.toFloat() / videoSize.height.toFloat()
+            } else {
+                1f
+            }
+            _state.update { it.copy(aspectRatio = ratio.coerceIn(0.42f, 2.39f)) }
+        }
+    }
+
     init {
-        player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _state.update { it.copy(isPlaying = isPlaying) }
-            }
-
-            override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
-                _state.update { it.copy(playbackSpeed = playbackParameters.speed) }
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                val ratio = if (videoSize.height > 0) {
-                    videoSize.width.toFloat() / videoSize.height.toFloat()
+        val sessionToken = SessionToken(appContext, ComponentName(appContext, PlaybackService::class.java))
+        val future = MediaController.Builder(appContext, sessionToken).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            try {
+                val c = future.get()
+                controller = c
+                val ratio = if (c.videoSize.height > 0) {
+                    c.videoSize.width.toFloat() / c.videoSize.height.toFloat()
                 } else {
                     1f
                 }
-                _state.update { it.copy(aspectRatio = ratio.coerceIn(0.42f, 2.39f)) }
+                _state.update {
+                    it.copy(
+                        player = c,
+                        isPlaying = c.isPlaying,
+                        playbackSpeed = c.playbackParameters.speed,
+                        aspectRatio = ratio.coerceIn(0.42f, 2.39f)
+                    )
+                }
+                c.addListener(playerListener)
+                applyQuality(state.value.quality)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        })
-        applyQuality(VideoQuality.Auto)
+        }, MoreExecutors.directExecutor())
     }
 
-    fun play(mediaKey: String, url: String) {
+    fun play(mediaKey: String, url: String, title: String? = null, artist: String? = null) {
+        val p = controller ?: return
         val current = state.value
         if (current.activeMediaKey != mediaKey) {
-            player.setMediaItem(MediaItem.fromUri(url))
-            player.prepare()
+            val mediaMetadata = MediaMetadata.Builder()
+                .setTitle(title ?: "Majra Video")
+                .setArtist(artist ?: "Majra")
+                .build()
+            val mediaItem = MediaItem.Builder()
+                .setUri(url)
+                .setMediaId(mediaKey)
+                .setMediaMetadata(mediaMetadata)
+                .build()
+            p.setMediaItem(mediaItem)
+            p.prepare()
             _state.update { it.copy(activeMediaKey = mediaKey) }
         }
-        player.setPlaybackSpeed(current.playbackSpeed)
-        player.play()
+        p.setPlaybackSpeed(current.playbackSpeed)
+        p.play()
     }
 
-    fun toggle(mediaKey: String, url: String) {
-        if (state.value.activeMediaKey == mediaKey && player.isPlaying) {
-            player.pause()
+    fun toggle(mediaKey: String, url: String, title: String? = null, artist: String? = null) {
+        val p = controller ?: return
+        if (state.value.activeMediaKey == mediaKey && p.isPlaying) {
+            p.pause()
         } else {
-            play(mediaKey, url)
+            play(mediaKey, url, title, artist)
         }
     }
 
     fun pauseCurrent(mediaKey: String) {
-        if (state.value.activeMediaKey == mediaKey && player.isPlaying) {
-            player.pause()
+        val p = controller ?: return
+        if (state.value.activeMediaKey == mediaKey && p.isPlaying) {
+            p.pause()
         }
     }
 
     fun pause() {
-        player.pause()
+        controller?.pause()
     }
 
     fun setPlaybackSpeed(speed: Float) {
         val clamped = speed.coerceIn(0.25f, 3f)
-        player.setPlaybackSpeed(clamped)
+        controller?.setPlaybackSpeed(clamped)
         _state.update { it.copy(playbackSpeed = clamped) }
     }
 
@@ -110,20 +151,33 @@ class VideoPlaybackController(context: Context) {
         _state.update { it.copy(isInPictureInPicture = isInPictureInPicture) }
     }
 
-    fun hasActivePlayback(): Boolean = player.isPlaying
+    fun toggleFullscreen() {
+        _state.update { it.copy(isFullscreen = !it.isFullscreen) }
+    }
+
+    fun setFullscreen(isFullscreen: Boolean) {
+        _state.update { it.copy(isFullscreen = isFullscreen) }
+    }
+
+    fun hasActivePlayback(): Boolean = controller?.isPlaying ?: false
 
     fun release() {
-        mediaSession.release()
-        player.release()
+        controller?.removeListener(playerListener)
+        controller = null
+        controllerFuture?.let {
+            MediaController.releaseFuture(it)
+        }
+        controllerFuture = null
     }
 
     private fun applyQuality(quality: VideoQuality) {
-        val builder = player.trackSelectionParameters.buildUpon()
+        val p = controller ?: return
+        val builder = p.trackSelectionParameters.buildUpon()
         if (quality.maxWidth == null || quality.maxHeight == null) {
             builder.clearVideoSizeConstraints()
         } else {
             builder.setMaxVideoSize(quality.maxWidth, quality.maxHeight)
         }
-        player.trackSelectionParameters = builder.build()
+        p.trackSelectionParameters = builder.build()
     }
 }

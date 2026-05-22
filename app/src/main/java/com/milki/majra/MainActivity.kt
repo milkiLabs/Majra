@@ -1,7 +1,11 @@
 package com.milki.majra
 import com.milki.majra.data.model.Platform
 
+import android.Manifest
 import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -10,6 +14,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,8 +25,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Surface
@@ -34,8 +44,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,11 +70,26 @@ import com.milki.majra.ui.theme.MajraTheme
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.PlayerView
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.milki.majra.ui.feed.VideoControls
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private val container by lazy { AppContainer(applicationContext) }
     private val videoPlaybackController by lazy { VideoPlaybackController(applicationContext) }
+
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ -> }
 
     private val feedViewModel: FeedViewModel by viewModels {
         object : ViewModelProvider.Factory {
@@ -75,6 +102,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
         enableEdgeToEdge()
         setContent {
             MajraTheme {
@@ -87,6 +119,8 @@ class MainActivity : ComponentActivity() {
                         container = container,
                         videoPlaybackController = videoPlaybackController,
                         onEnterPictureInPicture = ::enterPipForVideo,
+                        onEnterFullscreen = ::enterFullscreen,
+                        onExitFullscreen = ::exitFullscreen,
                     )
                 }
             }
@@ -94,9 +128,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onUserLeaveHint() {
-        if (videoPlaybackController.hasActivePlayback()) {
-            enterPipForVideo()
-        }
         super.onUserLeaveHint()
     }
 
@@ -125,6 +156,20 @@ class MainActivity : ComponentActivity() {
         enterPictureInPictureMode(params)
         videoPlaybackController.setIsInPictureInPicture(true)
     }
+
+    private fun enterFullscreen() {
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        videoPlaybackController.setFullscreen(true)
+    }
+
+    private fun exitFullscreen() {
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.show(WindowInsetsCompat.Type.systemBars())
+        videoPlaybackController.setFullscreen(false)
+    }
 }
 
 @Composable
@@ -133,25 +178,38 @@ fun MajraApp(
     container: AppContainer,
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
+    onEnterFullscreen: () -> Unit,
+    onExitFullscreen: () -> Unit,
 ) {
     val playbackState by videoPlaybackController.state.collectAsState()
     val isInPip = playbackState.isInPictureInPicture
 
     // In PiP mode: render ONLY the video player fullscreen, no app chrome
     if (isInPip && playbackState.activeMediaKey != null) {
+        val player = playbackState.player
         AndroidView(
             factory = { context ->
                 PlayerView(context).apply {
                     useController = false
-                    player = videoPlaybackController.player
+                    this.player = player
                 }
             },
             update = { view ->
-                if (view.player !== videoPlaybackController.player) {
-                    view.player = videoPlaybackController.player
+                if (view.player !== player) {
+                    view.player = player
                 }
             },
             modifier = Modifier.fillMaxSize(),
+        )
+        return
+    }
+
+    // Fullscreen mode: render only the video player with controls
+    if (playbackState.isFullscreen && playbackState.activeMediaKey != null) {
+        FullscreenVideoPlayer(
+            videoPlaybackController = videoPlaybackController,
+            onEnterPictureInPicture = onEnterPictureInPicture,
+            onExitFullscreen = onExitFullscreen,
         )
         return
     }
@@ -259,6 +317,7 @@ fun MajraApp(
                             onMessageShown = viewModel::dismissMessage,
                             onOpenDrawer = { scope.launch { drawerState.open() } },
                             onEnterPictureInPicture = onEnterPictureInPicture,
+                            onEnterFullscreen = onEnterFullscreen,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -295,6 +354,7 @@ fun MajraApp(
                             onLoadOlderClick = { viewModel.loadOlder(key.platform, key.accountId) },
                             onMessageShown = viewModel::dismissMessage,
                             onEnterPictureInPicture = onEnterPictureInPicture,
+                            onEnterFullscreen = onEnterFullscreen,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -303,5 +363,84 @@ fun MajraApp(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun FullscreenVideoPlayer(
+    videoPlaybackController: VideoPlaybackController,
+    onEnterPictureInPicture: () -> Unit,
+    onExitFullscreen: () -> Unit,
+) {
+    val playbackState by videoPlaybackController.state.collectAsState()
+    val mediaKey = playbackState.activeMediaKey ?: return
+
+    var controlsVisible by remember { mutableStateOf(true) }
+    var hideTimestamp by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(hideTimestamp) {
+        if (controlsVisible) {
+            delay(3_000)
+            controlsVisible = false
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) {
+                controlsVisible = !controlsVisible
+                if (controlsVisible) hideTimestamp = System.nanoTime()
+            },
+    ) {
+        val player = playbackState.player
+        AndroidView(
+            factory = { context ->
+                PlayerView(context).apply {
+                    useController = false
+                    this.player = player
+                }
+            },
+            update = { view ->
+                if (view.player !== player) {
+                    view.player = player
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        VideoControls(
+            mediaKey = mediaKey,
+            videoUrl = mediaKey,
+            videoPlaybackController = videoPlaybackController,
+            onEnterPictureInPicture = onEnterPictureInPicture,
+            onToggleFullscreen = onExitFullscreen,
+            visible = controlsVisible,
+            onInteraction = { hideTimestamp = System.nanoTime() },
+            username = "",
+            caption = null,
+        )
+
+        if (controlsVisible) {
+            IconButton(
+                onClick = onExitFullscreen,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.5f)),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Exit fullscreen",
+                    tint = Color.White,
+                )
+            }
+        }
     }
 }

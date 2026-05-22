@@ -96,6 +96,7 @@ fun FeedScreen(
     onMessageShown: () -> Unit,
     onOpenDrawer: () -> Unit,
     onEnterPictureInPicture: () -> Unit,
+    onEnterFullscreen: () -> Unit,
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -150,6 +151,7 @@ fun FeedScreen(
                         item = item,
                         videoPlaybackController = videoPlaybackController,
                         onEnterPictureInPicture = onEnterPictureInPicture,
+                        onToggleFullscreen = onEnterFullscreen,
                     )
                 }
             }
@@ -383,6 +385,7 @@ internal fun PostCard(
     item: FeedItem,
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
+    onToggleFullscreen: () -> Unit,
 ) {
     Card(shape = RoundedCornerShape(28.dp)) {
         Column {
@@ -425,8 +428,10 @@ internal fun PostCard(
             }
             PostMedia(
                 post = item.post,
+                username = item.account.username,
                 videoPlaybackController = videoPlaybackController,
                 onEnterPictureInPicture = onEnterPictureInPicture,
+                onToggleFullscreen = onToggleFullscreen,
             )
             if (item.post.caption.isNotBlank()) {
                 Text(
@@ -446,8 +451,10 @@ internal fun PostCard(
 @Composable
 internal fun PostMedia(
     post: SocialPost,
+    username: String,
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
+    onToggleFullscreen: () -> Unit,
 ) {
     val items = post.mediaItems
 
@@ -466,8 +473,10 @@ internal fun PostMedia(
                 PagerMediaItem(
                     item = item,
                     caption = post.caption,
+                    username = username,
                     videoPlaybackController = videoPlaybackController,
                     onEnterPictureInPicture = onEnterPictureInPicture,
+                    onToggleFullscreen = onToggleFullscreen,
                 )
             }
             Box(
@@ -503,8 +512,10 @@ internal fun PostMedia(
             PagerMediaItem(
                 item = item,
                 caption = post.caption,
+                username = username,
                 videoPlaybackController = videoPlaybackController,
                 onEnterPictureInPicture = onEnterPictureInPicture,
+                onToggleFullscreen = onToggleFullscreen,
             )
         }
     }
@@ -514,12 +525,15 @@ internal fun PostMedia(
 internal fun PagerMediaItem(
     item: PostMediaItem,
     caption: String?,
+    username: String,
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
+    onToggleFullscreen: () -> Unit,
 ) {
     val playbackState by videoPlaybackController.state.collectAsState()
     val mediaKey = item.videoUrl.orEmpty()
     val isActiveVideo = item.isVideo && playbackState.activeMediaKey == mediaKey
+    val player = playbackState.player
 
     if (item.isVideo && isActiveVideo) {
         var controlsVisible by remember { mutableStateOf(true) }
@@ -546,12 +560,12 @@ internal fun PagerMediaItem(
                 factory = { context ->
                     PlayerView(context).apply {
                         useController = false
-                        player = videoPlaybackController.player
+                        this.player = player
                     }
                 },
                 update = { view ->
-                    if (view.player !== videoPlaybackController.player) {
-                        view.player = videoPlaybackController.player
+                    if (view.player !== player) {
+                        view.player = player
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -561,8 +575,11 @@ internal fun PagerMediaItem(
                 videoUrl = item.videoUrl.orEmpty(),
                 videoPlaybackController = videoPlaybackController,
                 onEnterPictureInPicture = onEnterPictureInPicture,
+                onToggleFullscreen = onToggleFullscreen,
                 visible = controlsVisible,
                 onInteraction = { hideTimestamp = System.nanoTime() },
+                username = username,
+                caption = caption,
             )
         }
     } else {
@@ -573,7 +590,12 @@ internal fun PagerMediaItem(
                     if (item.isVideo) {
                         Modifier.clickable {
                             item.videoUrl?.let { url ->
-                                videoPlaybackController.play(mediaKey, url)
+                                videoPlaybackController.play(
+                                    mediaKey = mediaKey,
+                                    url = url,
+                                    title = "@$username",
+                                    artist = caption
+                                )
                             }
                         }
                     } else {
@@ -592,7 +614,12 @@ internal fun PagerMediaItem(
                 Card(
                     onClick = {
                         item.videoUrl?.let { url ->
-                            videoPlaybackController.play(mediaKey, url)
+                            videoPlaybackController.play(
+                                mediaKey = mediaKey,
+                                url = url,
+                                title = "@$username",
+                                artist = caption
+                            )
                         }
                     },
                     colors = CardDefaults.cardColors(
@@ -614,16 +641,19 @@ internal fun PagerMediaItem(
 }
 
 @Composable
-private fun VideoControls(
+internal fun VideoControls(
     mediaKey: String,
     videoUrl: String,
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
+    onToggleFullscreen: () -> Unit,
     visible: Boolean,
     onInteraction: () -> Unit,
+    username: String,
+    caption: String?,
 ) {
     val playbackState by videoPlaybackController.state.collectAsState()
-    val player = videoPlaybackController.player
+    val player = playbackState.player
     var speedMenuOpen by remember { mutableStateOf(false) }
     var qualityMenuOpen by remember { mutableStateOf(false) }
 
@@ -634,12 +664,14 @@ private fun VideoControls(
     var seekValue by remember { mutableFloatStateOf(0f) }
 
     // Poll player position while playing
-    LaunchedEffect(playbackState.isPlaying, playbackState.activeMediaKey) {
+    LaunchedEffect(playbackState.isPlaying, playbackState.activeMediaKey, player) {
         while (true) {
-            if (!isSeeking) {
-                positionMs = player.currentPosition.coerceAtLeast(0L)
+            if (player != null) {
+                if (!isSeeking) {
+                    positionMs = player.currentPosition.coerceAtLeast(0L)
+                }
+                durationMs = player.duration.let { if (it < 0) 0L else it }
             }
-            durationMs = player.duration.let { if (it < 0) 0L else it }
             delay(250)
         }
     }
@@ -666,7 +698,12 @@ private fun VideoControls(
             // Center play/pause button
             IconButton(
                 onClick = {
-                    videoPlaybackController.toggle(mediaKey, videoUrl)
+                    videoPlaybackController.toggle(
+                        mediaKey = mediaKey,
+                        url = videoUrl,
+                        title = "@$username",
+                        artist = caption
+                    )
                     onInteraction()
                 },
                 modifier = Modifier
@@ -705,7 +742,7 @@ private fun VideoControls(
                     },
                     onValueChangeFinished = {
                         val seekTo = (seekValue * durationMs).toLong()
-                        player.seekTo(seekTo)
+                        player?.seekTo(seekTo)
                         positionMs = seekTo
                         isSeeking = false
                         onInteraction()
@@ -801,6 +838,20 @@ private fun VideoControls(
                     }) {
                         Text(
                             text = "PiP",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Fullscreen
+                    TextButton(onClick = {
+                        onToggleFullscreen()
+                        onInteraction()
+                    }) {
+                        Text(
+                            text = if (playbackState.isFullscreen) "Exit FS" else "Fullscreen",
                             color = Color.White,
                             style = MaterialTheme.typography.labelMedium,
                         )

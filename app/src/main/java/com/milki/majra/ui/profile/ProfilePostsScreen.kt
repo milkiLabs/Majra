@@ -63,6 +63,7 @@ fun ProfilePostsScreen(
     onLoadOlderClick: () -> Unit,
     onMessageShown: () -> Unit,
     onEnterPictureInPicture: () -> Unit,
+    onEnterFullscreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -191,6 +192,7 @@ fun ProfilePostsScreen(
                         item = item,
                         videoPlaybackController = videoPlaybackController,
                         onEnterPictureInPicture = onEnterPictureInPicture,
+                        onToggleFullscreen = onEnterFullscreen,
                     )
                 }
                 item {

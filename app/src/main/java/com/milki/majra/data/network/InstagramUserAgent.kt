@@ -1,0 +1,12 @@
+package com.milki.majra.data.network
+
+object InstagramUserAgent {
+    const val DEFAULT_ANDROID =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+    const val LINUX = 
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+    fun choose(capturedUserAgent: String?): String {
+        return LINUX
+    }
+}

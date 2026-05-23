@@ -18,6 +18,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -65,7 +67,9 @@ import com.milki.majra.media.VideoPlaybackController
 import com.milki.majra.ui.feed.FeedScreen
 import com.milki.majra.ui.feed.FeedViewModel
 import com.milki.majra.ui.feed.paginationLabel
+import com.milki.majra.ui.feed.PlatformBadge
 import com.milki.majra.ui.login.LoginScreen
+import com.milki.majra.ui.login.PlatformLoginConfig
 import com.milki.majra.ui.profile.ProfilePostsScreen
 import com.milki.majra.ui.theme.MajraTheme
 import kotlinx.coroutines.launch
@@ -261,13 +265,20 @@ fun MajraApp(
                             NavigationDrawerItem(
                                 label = {
                                     Column {
-                                        Text(
-                                            text = "@${account.username}",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "@${account.username}",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            PlatformBadge(platform = account.platform)
+                                        }
                                         account.displayName?.let { name ->
                                             Text(
                                                 text = name,
@@ -319,7 +330,7 @@ fun MajraApp(
                         FeedScreen(
                             state = state,
                             videoPlaybackController = videoPlaybackController,
-                            onLoginClick = { backStack.add(LoginRoute) },
+                            onLoginClick = { platform -> backStack.add(LoginRoute(platform)) },
                             onSyncClick = { platform, accountId, username -> viewModel.sync(platform, accountId, username) },
                             onLoadOlderClick = { platform, accountId -> viewModel.loadOlder(platform, accountId) },
                             onMessageShown = viewModel::dismissMessage,
@@ -332,10 +343,12 @@ fun MajraApp(
                     }
 
                     is LoginRoute -> NavEntry(key) {
+                        val config = PlatformLoginConfig.forPlatform(key.platform)
                         LoginScreen(
+                            config = config,
                             onSessionCaptured = { cookie, userAgent ->
                                 scope.launch {
-                                    container.repository.saveSession(com.milki.majra.data.model.Platform.INSTAGRAM, cookie, userAgent)
+                                    container.repository.saveSession(key.platform, cookie, userAgent)
                                     backStack.removeLastOrNull()
                                 }
                             },

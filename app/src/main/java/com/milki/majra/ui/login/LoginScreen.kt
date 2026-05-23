@@ -26,14 +26,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.milki.majra.data.network.InstagramUserAgent
+import com.milki.majra.data.model.Platform
+import com.milki.majra.data.platform.instagram.InstagramUserAgent
 
-private const val LOGIN_URL = "https://www.instagram.com/accounts/login/"
-private const val INSTAGRAM_HOME_URL = "https://www.instagram.com/"
-
+/**
+ * Platform-agnostic WebView login screen. The [config] parameter controls
+ * which platform's login page is loaded and how session success is detected.
+ */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LoginScreen(
+    config: PlatformLoginConfig,
     onSessionCaptured: (cookie: String, userAgent: String) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -50,11 +53,11 @@ fun LoginScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "Sign in once",
+                text = "Sign in to ${config.displayName}",
                 style = MaterialTheme.typography.headlineSmall,
             )
             Text(
-                text = "Majra stores only your browser cookie and WebView user-agent locally so background sync can fetch profile pages without keeping a browser open.",
+                text = config.description,
                 style = MaterialTheme.typography.bodyMedium,
             )
             Button(onClick = onCancel) {
@@ -76,8 +79,18 @@ fun LoginScreen(
                     settings.domStorageEnabled = true
                     settings.cacheMode = WebSettings.LOAD_DEFAULT
                     settings.mediaPlaybackRequiresUserGesture = true
-                    settings.userAgentString = InstagramUserAgent.choose(settings.userAgentString)
                     settings.setSupportMultipleWindows(false)
+
+                    // Apply platform-specific user-agent if specified in config, falling back to Instagram default if needed
+                    val customUa = config.userAgent ?: if (config.platform == Platform.INSTAGRAM) {
+                        InstagramUserAgent.choose(settings.userAgentString)
+                    } else {
+                        null
+                    }
+                    if (customUa != null) {
+                        settings.userAgentString = customUa
+                    }
+
                     isFocusable = true
                     isFocusableInTouchMode = true
                     CookieManager.getInstance().setAcceptCookie(true)
@@ -93,11 +106,12 @@ fun LoginScreen(
                             isLoading = false
                             val currentUrl = url.orEmpty()
                             android.util.Log.d("LoginScreen", "onPageFinished: $currentUrl")
-                            val cookie = CookieManager.getInstance().getCookie(INSTAGRAM_HOME_URL).orEmpty()
-                            if (currentUrl.isInstagramHome() && cookie.contains("sessionid=")) {
+                            val cookie = CookieManager.getInstance().getCookie(config.cookieDomain).orEmpty()
+                            if (config.successUrlCheck(currentUrl) && config.sessionCookieCheck(cookie)) {
                                 sessionCaptured = true
                                 CookieManager.getInstance().flush()
-                                onSessionCaptured(cookie, InstagramUserAgent.choose(view.settings.userAgentString))
+                                val userAgent = config.userAgent ?: view.settings.userAgentString
+                                onSessionCaptured(cookie, userAgent)
                             }
                         }
 
@@ -106,7 +120,7 @@ fun LoginScreen(
                             android.util.Log.e("LoginScreen", "onReceivedError: ${error?.description}")
                         }
                     }
-                    loadUrl(LOGIN_URL)
+                    loadUrl(config.loginUrl)
                 }
             },
         )
@@ -122,9 +136,4 @@ fun LoginScreen(
             // We do NOT call destroy() here to avoid crashes from pending callbacks.
         }
     }
-}
-
-private fun String.isInstagramHome(): Boolean {
-    val clean = substringBefore('?').trimEnd('/') + "/"
-    return clean == INSTAGRAM_HOME_URL
 }

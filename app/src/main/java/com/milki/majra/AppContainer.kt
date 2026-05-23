@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.room.Room
 import com.milki.majra.data.db.MajraDatabase
 import com.milki.majra.data.local.SessionStore
-import com.milki.majra.data.network.InstagramHttpClient
+import com.milki.majra.data.platform.facebook.FacebookFeedSourceClient
+import com.milki.majra.data.platform.facebook.FacebookWebViewScraper
+import com.milki.majra.data.platform.instagram.InstagramFeedSourceClient
+import com.milki.majra.data.platform.instagram.InstagramHttpClient
+import com.milki.majra.data.platform.instagram.InstagramHtmlParser
 import com.milki.majra.data.repository.FeedRepository
-import com.milki.majra.data.repository.InstagramFeedSourceClient
-import com.milki.majra.data.scraper.InstagramHtmlParser
 
 class AppContainer(context: Context) {
     private val applicationContext = context.applicationContext
@@ -22,17 +24,27 @@ class AppContainer(context: Context) {
         .fallbackToDestructiveMigration(true)
         .build()
 
-    private val htmlParser = InstagramHtmlParser()
+    // ── Instagram ────────────────────────────────────────────────────────
 
+    private val instagramParser = InstagramHtmlParser()
     private val instagramHttpClient = InstagramHttpClient(sessionStore)
 
+    // ── Facebook ─────────────────────────────────────────────────────────
+
+    private val facebookWebViewScraper = FacebookWebViewScraper(applicationContext, sessionStore)
+
+    // ── Repository (platform-agnostic) ───────────────────────────────────
+
     val repository: FeedRepository = FeedRepository(
-        dao = database.instagramDao(),
+        dao = database.feedDao(),
         sessionStore = sessionStore,
         clients = listOf(
             InstagramFeedSourceClient(
                 httpClient = instagramHttpClient,
-                parser = htmlParser,
+                parser = instagramParser,
+            ),
+            FacebookFeedSourceClient(
+                scraper = facebookWebViewScraper,
             ),
         ),
         clock = { System.currentTimeMillis() },

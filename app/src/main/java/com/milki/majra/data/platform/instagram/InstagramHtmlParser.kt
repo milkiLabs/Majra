@@ -1,4 +1,4 @@
-package com.milki.majra.data.scraper
+package com.milki.majra.data.platform.instagram
 
 import com.milki.majra.data.model.Platform
 import com.milki.majra.data.model.SocialPost

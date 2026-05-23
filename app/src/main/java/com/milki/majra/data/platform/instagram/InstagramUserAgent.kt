@@ -1,4 +1,4 @@
-package com.milki.majra.data.network
+package com.milki.majra.data.platform.instagram
 
 object InstagramUserAgent {
     const val DEFAULT_ANDROID =

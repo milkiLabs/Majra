@@ -100,12 +100,13 @@ fun FeedScreen(
     onOpenDrawer: () -> Unit,
     onEnterPictureInPicture: () -> Unit,
     onEnterFullscreen: () -> Unit,
-    onLoginClick: () -> Unit,
+    onLoginClick: (Platform) -> Unit,
     onOpenImage: (imageUrl: String, caption: String?) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     var username by rememberSaveable { mutableStateOf("") }
+    var selectedPlatform by rememberSaveable { mutableStateOf(Platform.INSTAGRAM) }
 
     LaunchedEffect(state.message) {
         state.message?.let { message ->
@@ -124,12 +125,14 @@ fun FeedScreen(
         ) {
             item {
                 HeaderCard(
-                    isAuthenticated = state.isAuthenticated,
+                    state = state,
+                    selectedPlatform = selectedPlatform,
+                    onPlatformSelected = { selectedPlatform = it },
                     username = username,
                     isBusy = state.isBusy,
                     onUsernameChange = { username = it },
                     onLoginClick = onLoginClick,
-                    onSyncClick = { onSyncClick(Platform.INSTAGRAM, username, username) },
+                    onSyncClick = { onSyncClick(selectedPlatform, username, username) },
                     onOpenDrawer = onOpenDrawer,
                 )
             }
@@ -166,12 +169,80 @@ fun FeedScreen(
 }
 
 @Composable
+private fun PlatformSelector(
+    selected: Platform,
+    onSelected: (Platform) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        val platforms = listOf(Platform.INSTAGRAM, Platform.FACEBOOK)
+        platforms.forEach { platform ->
+            val isSelected = platform == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .clickable { onSelected(platform) }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = platform.displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PlatformBadge(platform: Platform, modifier: Modifier = Modifier) {
+    val containerColor = when (platform) {
+        Platform.INSTAGRAM -> Color(0xFFF50057).copy(alpha = 0.1f)
+        Platform.FACEBOOK -> Color(0xFF1877F2).copy(alpha = 0.1f)
+        Platform.X -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+        Platform.RSS -> Color(0xFFF26522).copy(alpha = 0.1f)
+    }
+    val contentColor = when (platform) {
+        Platform.INSTAGRAM -> Color(0xFFD81B60)
+        Platform.FACEBOOK -> Color(0xFF0D47A1)
+        Platform.X -> MaterialTheme.colorScheme.onSurface
+        Platform.RSS -> Color(0xFFE65100)
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(containerColor)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = platform.displayName,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = contentColor,
+        )
+    }
+}
+
+@Composable
 private fun HeaderCard(
-    isAuthenticated: Boolean,
+    state: FeedUiState,
+    selectedPlatform: Platform,
+    onPlatformSelected: (Platform) -> Unit,
     username: String,
     isBusy: Boolean,
     onUsernameChange: (String) -> Unit,
-    onLoginClick: () -> Unit,
+    onLoginClick: (Platform) -> Unit,
     onSyncClick: () -> Unit,
     onOpenDrawer: () -> Unit,
 ) {
@@ -201,37 +272,50 @@ private fun HeaderCard(
                 )
             }
             Text(
-                text = "A private, intentional Instagram reader. Add only accounts you truly want to read, sync manually, and stay out of the algorithmic feed.",
+                text = "A private, intentional social media reader. Add only accounts you truly want to read, sync manually, and stay out of the algorithmic feed.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (!isAuthenticated) {
-                Button(onClick = onLoginClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("Sign in to Instagram")
-                }
-            }
-            OutlinedTextField(
-                value = username,
-                onValueChange = onUsernameChange,
-                enabled = isAuthenticated && !isBusy,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("Username") },
-                prefix = { Text("@") },
-                supportingText = { Text("Manual sync only. No endless background feed.") },
+
+            PlatformSelector(
+                selected = selectedPlatform,
+                onSelected = onPlatformSelected,
+                modifier = Modifier.fillMaxWidth()
             )
-            Button(
-                enabled = isAuthenticated && !isBusy,
-                onClick = onSyncClick,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text("Fetch latest posts")
+
+            val isAuthed = state.isAuthenticatedFor(selectedPlatform)
+
+            if (!isAuthed) {
+                Button(
+                    onClick = { onLoginClick(selectedPlatform) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Sign in to ${selectedPlatform.displayName}")
+                }
+            } else {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = onUsernameChange,
+                    enabled = !isBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Username") },
+                    prefix = { Text("@") },
+                    supportingText = { Text("Manual sync only. No endless background feed.") },
+                )
+                Button(
+                    enabled = !isBusy && username.isNotBlank(),
+                    onClick = onSyncClick,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (isBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text("Fetch latest posts")
+                    }
                 }
             }
         }
@@ -314,13 +398,20 @@ private fun SourceCard(
                     contentScale = ContentScale.Crop,
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "@${account.username}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "@${account.username}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        PlatformBadge(platform = account.platform)
+                    }
                     Text(
                         text = account.paginationLabel(),
                         style = MaterialTheme.typography.labelSmall,
@@ -411,11 +502,20 @@ internal fun PostCard(
                     contentScale = ContentScale.Crop,
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "@${item.account.username}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "@${item.account.username}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        PlatformBadge(platform = item.post.platform)
+                    }
                     item.account.displayName?.let { name ->
                         Text(
                             text = name,

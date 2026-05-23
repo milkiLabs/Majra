@@ -11,5 +11,5 @@ import androidx.room.TypeConverters
 )
 @TypeConverters(PostMediaConverters::class)
 abstract class MajraDatabase : RoomDatabase() {
-    abstract fun instagramDao(): InstagramDao
+    abstract fun feedDao(): FeedDao
 }

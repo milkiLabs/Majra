@@ -1,4 +1,4 @@
-package com.milki.majra.data.network
+package com.milki.majra.data.platform.instagram
 
 import com.milki.majra.data.local.SessionStore
 import com.milki.majra.data.model.Platform

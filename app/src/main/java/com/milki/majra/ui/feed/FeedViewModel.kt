@@ -22,12 +22,21 @@ class FeedViewModel(
     private val loadingOlderSourceKey = MutableStateFlow<String?>(null)
     private val message = MutableStateFlow<String?>(null)
 
+    /** Track auth state per platform so the UI can show login prompts for each. */
     private val feedData = combine(
-        repository.session(Platform.INSTAGRAM), // TODO: Eventually track auth state per platform if needed by UI globally
+        repository.session(Platform.INSTAGRAM),
+        repository.session(Platform.FACEBOOK),
         repository.feed,
         repository.accounts,
-    ) { session, feed, accounts ->
-        FeedData(session.isAuthenticated, feed, accounts)
+    ) { igSession, fbSession, feed, accounts ->
+        FeedData(
+            authenticatedPlatforms = buildSet {
+                if (igSession.isAuthenticated) add(Platform.INSTAGRAM)
+                if (fbSession.isAuthenticated) add(Platform.FACEBOOK)
+            },
+            feed = feed,
+            accounts = accounts,
+        )
     }
 
     val uiState: StateFlow<FeedUiState> = combine(
@@ -37,7 +46,7 @@ class FeedViewModel(
         message,
     ) { data, currentSync, currentOlderLoad, currentMessage ->
         FeedUiState(
-            isAuthenticated = data.isAuthenticated,
+            authenticatedPlatforms = data.authenticatedPlatforms,
             feed = data.feed,
             accounts = data.accounts,
             syncingSourceKey = currentSync,
@@ -89,19 +98,26 @@ class FeedViewModel(
 }
 
 data class FeedUiState(
-    val isAuthenticated: Boolean = false,
+    val authenticatedPlatforms: Set<Platform> = emptySet(),
     val feed: List<FeedItem> = emptyList(),
     val accounts: List<SocialProfile> = emptyList(),
     val syncingSourceKey: String? = null,
     val loadingOlderSourceKey: String? = null,
     val message: String? = null,
 ) {
+    /** Convenience: true if at least one platform is authenticated. */
+    val isAuthenticated: Boolean
+        get() = authenticatedPlatforms.isNotEmpty()
+
+    fun isAuthenticatedFor(platform: Platform): Boolean =
+        platform in authenticatedPlatforms
+
     val isBusy: Boolean
         get() = syncingSourceKey != null || loadingOlderSourceKey != null
 }
 
 private data class FeedData(
-    val isAuthenticated: Boolean,
+    val authenticatedPlatforms: Set<Platform>,
     val feed: List<FeedItem>,
     val accounts: List<SocialProfile>,
 )

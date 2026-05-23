@@ -56,5 +56,11 @@ data class SourceSession(
     val userAgent: String,
     val accessToken: String? = null,
 ) {
-    val isAuthenticated: Boolean = accessToken?.isNotBlank() == true || cookie.contains("sessionid=")
+    val isAuthenticated: Boolean
+        get() = accessToken?.isNotBlank() == true || when (platform) {
+            Platform.INSTAGRAM -> cookie.contains("sessionid=")
+            Platform.FACEBOOK -> cookie.contains("c_user=")
+            Platform.X -> cookie.contains("auth_token=")
+            Platform.RSS -> true
+        }
 }

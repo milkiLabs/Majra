@@ -98,13 +98,22 @@ fun ProfilePostsScreen(
                             )
                         }
                         Column {
-                            Text(
-                                text = "@$username",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "@$username",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                account?.let {
+                                    com.milki.majra.ui.feed.PlatformBadge(platform = it.platform)
+                                }
+                            }
                             account?.let {
                                 Text(
                                     text = it.paginationLabel(),

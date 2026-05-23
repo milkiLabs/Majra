@@ -8,7 +8,7 @@ import com.milki.majra.data.model.Platform
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-interface InstagramDao {
+interface FeedDao {
     @Transaction
     @Query("SELECT * FROM posts ORDER BY timestampSeconds DESC")
     fun observeFeed(): Flow<List<PostWithAccount>>

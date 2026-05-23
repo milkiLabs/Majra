@@ -82,6 +82,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.milki.majra.ui.feed.VideoControls
 import kotlinx.coroutines.delay
+import androidx.activity.compose.BackHandler
 
 class MainActivity : ComponentActivity() {
     private val container by lazy { AppContainer(applicationContext) }
@@ -219,8 +220,11 @@ fun MajraApp(
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
+    val isLoginRoute = backStack.lastOrNull() is LoginRoute
+
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = !isLoginRoute,
         drawerContent = {
             ModalDrawerSheet {
                 Column(
@@ -397,6 +401,7 @@ private fun FullscreenVideoPlayer(
                 if (controlsVisible) hideTimestamp = System.nanoTime()
             },
     ) {
+        BackHandler(onBack = onExitFullscreen)
         val player = playbackState.player
         AndroidView(
             factory = { context ->

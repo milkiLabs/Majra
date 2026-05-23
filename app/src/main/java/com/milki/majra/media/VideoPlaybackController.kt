@@ -31,6 +31,7 @@ data class VideoPlaybackState(
     val player: Player? = null,
     val activeMediaKey: String? = null,
     val isPlaying: Boolean = false,
+    val isEnded: Boolean = false,
     val playbackSpeed: Float = 1f,
     val quality: VideoQuality = VideoQuality.Auto,
     val isInPictureInPicture: Boolean = false,
@@ -49,7 +50,13 @@ class VideoPlaybackController(context: Context) {
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            _state.update { it.copy(isPlaying = isPlaying) }
+            _state.update { it.copy(isPlaying = isPlaying, isEnded = if (isPlaying) false else it.isEnded) }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                _state.update { it.copy(isEnded = true, isPlaying = false) }
+            }
         }
 
         override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
@@ -118,9 +125,14 @@ class VideoPlaybackController(context: Context) {
 
     fun toggle(mediaKey: String, url: String, title: String? = null, artist: String? = null) {
         val p = controller ?: return
-        if (state.value.activeMediaKey == mediaKey && p.isPlaying) {
+        val current = state.value
+        if (current.activeMediaKey == mediaKey && p.isPlaying) {
             p.pause()
         } else {
+            if (current.isEnded) {
+                p.seekTo(0)
+                _state.update { it.copy(isEnded = false) }
+            }
             play(mediaKey, url, title, artist)
         }
     }

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -713,8 +714,16 @@ internal fun VideoControls(
                     .background(Color.Black.copy(alpha = 0.45f)),
             ) {
                 Icon(
-                    imageVector = if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                    imageVector = when {
+                        playbackState.isEnded -> Icons.Default.Replay
+                        playbackState.isPlaying -> Icons.Default.Pause
+                        else -> Icons.Default.PlayArrow
+                    },
+                    contentDescription = when {
+                        playbackState.isEnded -> "Replay"
+                        playbackState.isPlaying -> "Pause"
+                        else -> "Play"
+                    },
                     tint = Color.White,
                     modifier = Modifier.size(32.dp),
                 )

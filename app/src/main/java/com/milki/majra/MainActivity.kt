@@ -60,6 +60,7 @@ import coil.compose.AsyncImage
 import com.milki.majra.navigation.HomeRoute
 import com.milki.majra.navigation.LoginRoute
 import com.milki.majra.navigation.ProfileRoute
+import com.milki.majra.navigation.ImageViewerRoute
 import com.milki.majra.media.VideoPlaybackController
 import com.milki.majra.ui.feed.FeedScreen
 import com.milki.majra.ui.feed.FeedViewModel
@@ -83,6 +84,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.milki.majra.ui.feed.VideoControls
 import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 
 class MainActivity : ComponentActivity() {
     private val container by lazy { AppContainer(applicationContext) }
@@ -322,6 +326,7 @@ fun MajraApp(
                             onOpenDrawer = { scope.launch { drawerState.open() } },
                             onEnterPictureInPicture = onEnterPictureInPicture,
                             onEnterFullscreen = onEnterFullscreen,
+                            onOpenImage = { url, caption -> backStack.add(ImageViewerRoute(url, caption)) },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -336,6 +341,14 @@ fun MajraApp(
                             },
                             onCancel = { backStack.removeLastOrNull() },
                             modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    is ImageViewerRoute -> NavEntry(key) {
+                        FullscreenImageViewer(
+                            imageUrl = key.imageUrl,
+                            caption = key.caption,
+                            onClose = { backStack.removeLastOrNull() },
                         )
                     }
 
@@ -359,6 +372,7 @@ fun MajraApp(
                             onMessageShown = viewModel::dismissMessage,
                             onEnterPictureInPicture = onEnterPictureInPicture,
                             onEnterFullscreen = onEnterFullscreen,
+                            onOpenImage = { url, caption -> backStack.add(ImageViewerRoute(url, caption)) },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -446,6 +460,68 @@ private fun FullscreenVideoPlayer(
                     tint = Color.White,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun FullscreenImageViewer(
+    imageUrl: String,
+    caption: String?,
+    onClose: () -> Unit,
+) {
+    var scale by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
+
+    BackHandler(onBack = onClose)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 5f)
+                    if (scale > 1f) {
+                        offsetX += pan.x
+                        offsetY += pan.y
+                    } else {
+                        offsetX = 0f
+                        offsetY = 0f
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = caption,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offsetX,
+                    translationY = offsetY,
+                ),
+            contentScale = ContentScale.Fit,
+        )
+
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.5f)),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Close",
+                tint = Color.White,
+            )
         }
     }
 }

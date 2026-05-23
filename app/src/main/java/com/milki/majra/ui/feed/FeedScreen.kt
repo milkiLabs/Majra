@@ -101,6 +101,7 @@ fun FeedScreen(
     onEnterPictureInPicture: () -> Unit,
     onEnterFullscreen: () -> Unit,
     onLoginClick: () -> Unit,
+    onOpenImage: (imageUrl: String, caption: String?) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -155,6 +156,7 @@ fun FeedScreen(
                         videoPlaybackController = videoPlaybackController,
                         onEnterPictureInPicture = onEnterPictureInPicture,
                         onToggleFullscreen = onEnterFullscreen,
+                        onOpenImage = onOpenImage,
                     )
                 }
             }
@@ -389,6 +391,7 @@ internal fun PostCard(
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
     onToggleFullscreen: () -> Unit,
+    onOpenImage: (imageUrl: String, caption: String?) -> Unit = { _, _ -> },
 ) {
     Card(shape = RoundedCornerShape(28.dp)) {
         Column {
@@ -435,6 +438,7 @@ internal fun PostCard(
                 videoPlaybackController = videoPlaybackController,
                 onEnterPictureInPicture = onEnterPictureInPicture,
                 onToggleFullscreen = onToggleFullscreen,
+                onOpenImage = onOpenImage,
             )
             if (item.post.caption.isNotBlank()) {
                 Text(
@@ -458,6 +462,7 @@ internal fun PostMedia(
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
     onToggleFullscreen: () -> Unit,
+    onOpenImage: (imageUrl: String, caption: String?) -> Unit = { _, _ -> },
 ) {
     val items = post.mediaItems
 
@@ -480,6 +485,7 @@ internal fun PostMedia(
                     videoPlaybackController = videoPlaybackController,
                     onEnterPictureInPicture = onEnterPictureInPicture,
                     onToggleFullscreen = onToggleFullscreen,
+                    onOpenImage = onOpenImage,
                 )
             }
             Box(
@@ -519,6 +525,7 @@ internal fun PostMedia(
                 videoPlaybackController = videoPlaybackController,
                 onEnterPictureInPicture = onEnterPictureInPicture,
                 onToggleFullscreen = onToggleFullscreen,
+                onOpenImage = onOpenImage,
             )
         }
     }
@@ -532,6 +539,7 @@ internal fun PagerMediaItem(
     videoPlaybackController: VideoPlaybackController,
     onEnterPictureInPicture: () -> Unit,
     onToggleFullscreen: () -> Unit,
+    onOpenImage: (imageUrl: String, caption: String?) -> Unit = { _, _ -> },
 ) {
     val playbackState by videoPlaybackController.state.collectAsState()
     val mediaKey = item.videoUrl.orEmpty()
@@ -601,6 +609,8 @@ internal fun PagerMediaItem(
                                 )
                             }
                         }
+                    } else if (!item.isVideo) {
+                        Modifier.clickable { onOpenImage(item.imageUrl, caption) }
                     } else {
                         Modifier
                     },

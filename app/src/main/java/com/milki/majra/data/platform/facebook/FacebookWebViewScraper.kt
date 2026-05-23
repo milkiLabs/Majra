@@ -1,6 +1,9 @@
 package com.milki.majra.data.platform.facebook
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.util.Log
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -9,7 +12,6 @@ import com.milki.majra.data.model.Platform
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
@@ -17,224 +19,221 @@ class FacebookWebViewScraper(
     private val context: Context,
     private val sessionStore: SessionStore,
 ) {
-    suspend fun scrapeProfile(username: String, scrollCount: Int = 1): String = withContext(Dispatchers.Main) {
+    @SuppressLint("SetJavaScriptEnabled")
+    suspend fun scrapeProfile(username: String, scrollCount: Int = 3): String = withContext(Dispatchers.Main) {
         val session = sessionStore.current(Platform.FACEBOOK)
-        val url = "https://m.facebook.com/${username.trimUsername()}"
-        
-        // Sync CookieManager cookies
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        session.cookie.split(";").forEach { cookiePart ->
-            if (cookiePart.isNotBlank()) {
-                cookieManager.setCookie("https://.facebook.com/", cookiePart.trim())
-            }
-        }
-        cookieManager.flush()
-        
-        val deferredResult = CompletableDeferred<String>()
+        val cleanUsername = username.trimUsername()
+        val url = "https://www.facebook.com/$cleanUsername?sk=timeline"
+
+        syncCookies(session.cookie)
+
         val webView = WebView(context)
-        
+        webView.measure(
+            View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY),
+        )
+        webView.layout(0, 0, 1080, 1920)
+
+        @Suppress("DEPRECATION")
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            userAgentString = MOBILE_USER_AGENT
+            databaseEnabled = true
+            userAgentString = DESKTOP_USER_AGENT
+            loadWithOverviewMode = true
+            useWideViewPort = true
+            builtInZoomControls = false
+            displayZoomControls = false
+            blockNetworkImage = false
         }
-        
-        class JsInterface {
-            @android.webkit.JavascriptInterface
-            fun processResult(jsonStr: String) {
-                deferredResult.complete(jsonStr)
-            }
 
-            @android.webkit.JavascriptInterface
-            fun onError(error: String) {
-                deferredResult.completeExceptionally(Exception(error))
-            }
-        }
-        
-        webView.addJavascriptInterface(JsInterface(), "HTMLBridge")
-        
-        val pageLoadedDeferred = CompletableDeferred<Unit>()
+        val pageLoaded = CompletableDeferred<Unit>()
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
-                pageLoadedDeferred.complete(Unit)
-            }
-        }
-        
-        webView.loadUrl(url)
-        
-        val scrollAndExtractJob = launch {
-            try {
-                // Wait for the page to finish loading initially
-                pageLoadedDeferred.await()
-                
-                // Perform scrolling to load dynamic content
-                for (i in 0 until scrollCount) {
-                    webView.evaluateJavascript("window.scrollTo(0, document.body.scrollHeight);", null)
-                    delay(1500)
+                Log.d(TAG, "onPageFinished: $url")
+                if (!pageLoaded.isCompleted) {
+                    pageLoaded.complete(Unit)
                 }
-                
-                // Inject the DOM extraction script
-                webView.evaluateJavascript(EXTRACTION_SCRIPT, null)
-            } catch (e: Exception) {
-                deferredResult.completeExceptionally(e)
             }
         }
-        
+
+        webView.loadUrl(url)
+
         try {
-            withTimeout(30000) { // 30 seconds max timeout
-                deferredResult.await()
+            withTimeout(90000) {
+                pageLoaded.await()
+
+                for (i in 0 until 5) {
+                    val ready = CompletableDeferred<String>()
+                    webView.evaluateJavascript("document.readyState") { v -> ready.complete(v ?: "") }
+                    if (ready.await().trim('"') == "complete") break
+                    delay(500)
+                }
+
+                delay(5000)
+
+                val allScrolls = scrollCount * 4
+                for (i in 0 until allScrolls) {
+                    webView.evaluateJavascript(SCROLL_SCRIPT, null)
+                    delay(2000)
+                }
+
+                delay(5000)
+
+                val deferred = CompletableDeferred<String>()
+                webView.evaluateJavascript(EXTRACTION_SCRIPT) { value ->
+                    deferred.complete(value ?: """{"posts":[]}""")
+                }
+                deferred.await()
             }
+        } catch (e: Exception) {
+            """{"error":"${e.message?.replace("\"", "\\\"")?.replace("\n", "\\n") ?: "Unknown"}","posts":[]}"""
         } finally {
-            scrollAndExtractJob.cancel()
             webView.stopLoading()
             webView.destroy()
         }
     }
 
+    private fun syncCookies(cookie: String) {
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        val parts = cookie.split(";").map { it.trim() }.filter { it.isNotBlank() }
+        val domains = listOf("https://facebook.com", "https://www.facebook.com")
+        for (part in parts) {
+            for (domain in domains) {
+                cookieManager.setCookie(domain, part)
+            }
+        }
+        cookieManager.flush()
+    }
+
     private fun String.trimUsername(): String = trim().removePrefix("@").trim('/').lowercase()
 
     companion object {
-        private const val MOBILE_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        private const val TAG = "FBWebViewScraper"
+        private const val DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+        private const val SCROLL_SCRIPT = "window.scrollBy(0, window.innerHeight * 0.8);"
 
         private val EXTRACTION_SCRIPT = """
-            (function() {
-                try {
-                    let displayName = document.title ? document.title.replace(/\s*\|\s*Facebook/i, '').replace(/\s*-\s*Facebook/i, '').trim() : '';
-                    if (!displayName || displayName.toLowerCase() === 'facebook' || displayName.toLowerCase() === 'error') {
-                        const h1 = document.querySelector('h1, h2, strong');
-                        if (h1) displayName = h1.textContent.trim();
-                    }
-                    
-                    let profilePicUrl = '';
-                    const img = document.querySelector('img[alt*="profile picture"]') || document.querySelector('img[alt*="profile pic"]');
-                    if (img) profilePicUrl = img.src;
-                    if (!profilePicUrl) {
-                        const imgs = document.querySelectorAll('img');
-                        for (const image of imgs) {
-                            const src = image.src;
-                            if (src && (src.includes('fbcdn') || src.includes('scontent')) && (src.includes('/t39.30808-1/') || src.includes('/100x100/'))) {
-                                profilePicUrl = src;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    let userId = null;
-                    const ownerIdEl = document.querySelector('[data-owner-id]');
-                    if (ownerIdEl) userId = ownerIdEl.getAttribute('data-owner-id');
-                    if (!userId) {
-                        const links = document.querySelectorAll('a');
-                        for (const link of links) {
-                            const href = link.href || '';
-                            const match = href.match(/[?&]id=(\d+)/) || href.match(/\/messages\/thread\/(\d+)/) || href.match(/\/composer\/\?id=(\d+)/);
-                            if (match) {
-                                userId = match[1];
-                                break;
-                            }
-                        }
-                    }
-                    if (!userId) {
-                        const bodyHtml = document.body.innerHTML;
-                        const match = bodyHtml.match(/\"id\"\:\"(\d+)\"/i) || bodyHtml.match(/\"owner_id\"\:\"(\d+)\"/i) || bodyHtml.match(/\"profile_owner\"\:\{\"id\"\:\"(\d+)\"/i);
-                        if (match) userId = match[1];
-                    }
+(function() {
+    try {
+        var displayName = '';
+        var title = (document.title || '').replace(/\s*[-|–]\s*Facebook/i, '').trim();
+        if (title && title.toLowerCase() !== 'facebook' && title.toLowerCase() !== 'error') displayName = title;
+        if (!displayName) {
+            var h1 = document.querySelector('h1');
+            if (h1) displayName = h1.textContent.trim();
+        }
 
-                    const posts = [];
-                    const articleEls = document.querySelectorAll('article, [role="article"]');
-                    articleEls.forEach(el => {
-                        let postId = null;
-                        let permalink = null;
-                        const links = el.querySelectorAll('a');
-                        for (const link of links) {
-                            const href = link.href || '';
-                            if (!href) continue;
-                            
-                            const postsMatch = href.match(/\/posts\/(\d+)/) || href.match(/\/story\.php\?story_fbid=(\d+)/);
-                            if (postsMatch) { 
-                                postId = postsMatch[1]; 
-                                permalink = href.startsWith('http') ? href : 'https://www.facebook.com' + href; 
-                                break; 
-                            }
-                            
-                            const fbidMatch = href.match(/fbid=(\d+)/) || href.match(/story_fbid=(\d+)/);
-                            if (fbidMatch) { 
-                                postId = fbidMatch[1]; 
-                                permalink = href.startsWith('http') ? href : 'https://www.facebook.com' + href; 
-                                break; 
-                            }
-                        }
-                        
-                        if (!postId) return;
+        var profilePicUrl = '';
+        var picEl = document.querySelector('img[alt*="profile" i]');
+        if (!picEl) picEl = document.querySelector('image[href*="scontent"]');
+        if (picEl) profilePicUrl = picEl.src || picEl.getAttribute('href') || '';
+        if (!profilePicUrl) {
+            var imgs = document.querySelectorAll('img');
+            for (var i = 0; i < imgs.length; i++) {
+                var s = imgs[i].src || '';
+                if (s.indexOf('scontent') > -1 && s.indexOf('/v/') > -1) { profilePicUrl = s; break; }
+            }
+        }
 
-                        let text = '';
-                        const textEl = el.querySelector('[data-testid="post_message"]') || 
-                                       el.querySelector('[data-sigil*="expose"]') || 
-                                       el.querySelector('.story_body_container') ||
-                                       el.querySelector('.msg') ||
-                                       el.querySelector('p');
-                        if (textEl) {
-                            text = textEl.textContent.trim();
-                        } else {
-                            text = el.innerText.trim();
-                        }
+        var containers = document.querySelectorAll('[role="article"]');
+        var toProcess = containers.length > 0 ? containers : [];
 
-                        const images = [];
-                        const imgEls = el.querySelectorAll('img');
-                        imgEls.forEach(img => {
-                            const src = img.src;
-                            if (!src) return;
-                            if (src.includes('/emoji/') || src.includes('/rsrc.php/') || src.includes('static.xx.fbcdn') || src.includes('avatar')) return;
-                            if (src.includes('fbcdn') || src.includes('scontent') || src.endsWith('.jpg') || src.endsWith('.png')) {
-                                if (!images.includes(src)) images.push(src);
-                            }
-                        });
+        var posts = [];
+        for (var i = 0; i < toProcess.length; i++) {
+            var post = extractPost(toProcess[i]);
+            if (post) posts.push(post);
+        }
 
-                        let videoUrl = null;
-                        const videoEl = el.querySelector('video');
-                        if (videoEl && videoEl.src) {
-                            videoUrl = videoEl.src;
-                        }
+        var seen = {};
+        var unique = [];
+        for (var i = 0; i < posts.length; i++) {
+            if (!seen[posts[i].id]) { seen[posts[i].id] = true; unique.push(posts[i]); }
+        }
 
-                        let timestamp = 0;
-                        const abbrEl = el.querySelector('abbr');
-                        if (abbrEl) {
-                            const utime = abbrEl.getAttribute('data-utime') || abbrEl.getAttribute('data-shorten');
-                            if (utime) timestamp = parseInt(utime);
-                        }
-                        if (!timestamp) {
-                            const timeEl = el.querySelector('time');
-                            if (timeEl && timeEl.getAttribute('datetime')) {
-                                timestamp = Math.floor(Date.parse(timeEl.getAttribute('datetime')) / 1000);
-                            }
-                        }
-                        if (!timestamp) {
-                            timestamp = Math.floor(Date.now() / 1000);
-                        }
+        return { displayName: displayName, profilePicUrl: profilePicUrl, userId: '', posts: unique };
 
-                        posts.push({
-                            id: postId,
-                            text: text,
-                            timestamp: timestamp,
-                            images: images,
-                            video: videoUrl,
-                            permalink: permalink
-                        });
-                    });
+    } catch(e) {
+        return {error: e.message, posts: []};
+    }
 
-                    const result = {
-                        displayName: displayName,
-                        profilePicUrl: profilePicUrl,
-                        userId: userId,
-                        posts: posts
-                    };
+    function extractPost(el) {
+        var postId = '';
+        var permalink = '';
 
-                    window.HTMLBridge.processResult(JSON.stringify(result));
-                } catch(e) {
-                    window.HTMLBridge.onError(e.message);
-                }
-            })();
+        var links = el.tagName === 'A' ? [el] : el.querySelectorAll('a');
+        for (var i = 0; i < links.length; i++) {
+            var h = links[i].href || '';
+            if (!h) continue;
+
+            var m = h.match(/\/story\.php\?.*?story_fbid=(\d+)/i);
+            if (m) { postId = 'sfb_' + m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
+
+            m = h.match(/\/posts\/(\d+)/);
+            if (m) { postId = m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
+
+            m = h.match(/\/posts\/(pfbid[a-zA-Z0-9]+)/);
+            if (m) { postId = m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
+
+            m = h.match(/fbid=(\d+)/);
+            if (m) { postId = 'fbid_' + m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
+        }
+
+        if (!postId) return null;
+
+        if (permalink) {
+            var qIdx = permalink.indexOf('?');
+            if (qIdx > -1) permalink = permalink.substring(0, qIdx);
+        }
+
+        var text = '';
+        var textEl = el.querySelector('[data-ad-comet-preview="message"], [data-testid="post_message"], .userContent, div[dir="auto"]');
+        if (textEl) text = textEl.textContent.trim();
+        if (!text) {
+            var p = el.querySelector('p');
+            if (p) text = p.textContent.trim();
+        }
+        if (!text) {
+            text = (el.innerText || '').replace(/\s+/g, ' ').substring(0, 2000).trim();
+        }
+
+        var images = [];
+        var imgEls = el.querySelectorAll('img');
+        for (var i = 0; i < imgEls.length; i++) {
+            var s = imgEls[i].src || '';
+            if (!s || s.indexOf('emoji') > -1 || s.indexOf('rsrc') > -1 || s.indexOf('static.xx.fbcdn') > -1 || s.indexOf('_nc_ads') > -1 || s.indexOf('pixel') > -1) continue;
+            if (s.indexOf('scontent') > -1 || s.indexOf('fbcdn') > -1 || s.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i)) {
+                if (images.indexOf(s) === -1) images.push(s);
+            }
+        }
+
+        var videoUrl = '';
+        var videoEl = el.querySelector('video');
+        if (videoEl && videoEl.src) videoUrl = videoEl.src;
+        if (!videoUrl) {
+            var v = el.querySelector('a[href*="/videos/"]');
+            if (v) videoUrl = v.href;
+        }
+
+        var timestamp = 0;
+        var abbr = el.querySelector('abbr[data-utime]');
+        if (abbr) { var u = abbr.getAttribute('data-utime'); if (u) timestamp = parseInt(u) * 1000; }
+        if (!timestamp) {
+            var t = el.querySelector('time');
+            if (t && t.getAttribute('datetime')) timestamp = Date.parse(t.getAttribute('datetime'));
+        }
+        if (!timestamp) {
+            var span = el.querySelector('[data-utime]');
+            if (span) { var u = span.getAttribute('data-utime'); if (u) timestamp = parseInt(u) * 1000; }
+        }
+        if (!timestamp) timestamp = Date.now();
+
+        return { id: postId, text: text, timestamp: Math.floor(timestamp / 1000), images: images, video: videoUrl, permalink: permalink };
+    }
+})();
         """.trimIndent()
     }
 }

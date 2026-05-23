@@ -15,13 +15,12 @@ class FacebookFeedSourceClient(
 
     override suspend fun syncProfile(sourceId: String): SourceSyncPage {
         val username = sourceId.trimUsername()
-        val jsonStr = scraper.scrapeProfile(username, scrollCount = 1)
+        val jsonStr = scraper.scrapeProfile(username, scrollCount = 3)
         return parseSyncPage(username, jsonStr, null)
     }
 
     override suspend fun loadOlderPosts(profile: SocialProfile): SourceSyncPage {
-        // Read next scroll count from nextPageToken, e.g., "scroll_3"
-        val nextScroll = profile.nextPageToken?.removePrefix("scroll_")?.toIntOrNull() ?: 2
+        val nextScroll = profile.nextPageToken?.removePrefix("scroll_")?.toIntOrNull() ?: 4
         val jsonStr = scraper.scrapeProfile(profile.username, scrollCount = nextScroll)
         return parseSyncPage(profile.username, jsonStr, nextScroll)
     }
@@ -31,7 +30,7 @@ class FacebookFeedSourceClient(
         val displayName = json.optString("displayName").takeIf { it.isNotBlank() } ?: username
         val profilePicUrl = json.optString("profilePicUrl").takeIf { it.isNotBlank() }
         val userId = json.optString("userId").takeIf { it.isNotBlank() } ?: username
-        
+
         val account = SocialProfile(
             platform = Platform.FACEBOOK,
             username = username,
@@ -48,15 +47,14 @@ class FacebookFeedSourceClient(
             val text = postObj.optString("text")
             val timestamp = postObj.optLong("timestamp")
             val permalink = postObj.optString("permalink")
-            
-            // Reconstruct images and video URL
+
             val images = mutableListOf<String>()
             val imagesArray = postObj.getJSONArray("images")
             for (j in 0 until imagesArray.length()) {
                 images.add(imagesArray.getString(j))
             }
             val videoUrl = postObj.optString("video").takeIf { it.isNotBlank() && it != "null" }
-            
+
             val mediaItems = mutableListOf<PostMediaItem>()
             if (videoUrl != null) {
                 mediaItems.add(
@@ -77,7 +75,7 @@ class FacebookFeedSourceClient(
                     )
                 }
             }
-            
+
             val mediaType = when {
                 videoUrl != null -> SocialPost.MEDIA_TYPE_VIDEO
                 mediaItems.size > 1 -> SocialPost.MEDIA_TYPE_CAROUSEL
@@ -100,7 +98,6 @@ class FacebookFeedSourceClient(
             )
         }
 
-        // Sort posts descending
         val sortedPosts = posts.sortedByDescending { it.timestampSeconds }
 
         val nextScrollVal = (currentScroll ?: 1) + 1

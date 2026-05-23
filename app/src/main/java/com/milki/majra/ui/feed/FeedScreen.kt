@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.Button
@@ -855,14 +857,14 @@ internal fun VideoControls(
                     Spacer(modifier = Modifier.width(4.dp))
 
                     // Fullscreen
-                    TextButton(onClick = {
+                    IconButton(onClick = {
                         onToggleFullscreen()
                         onInteraction()
                     }) {
-                        Text(
-                            text = if (playbackState.isFullscreen) "Exit FS" else "Fullscreen",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelMedium,
+                        Icon(
+                            imageVector = if (playbackState.isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (playbackState.isFullscreen) "Exit fullscreen" else "Fullscreen",
+                            tint = Color.White,
                         )
                     }
                 }

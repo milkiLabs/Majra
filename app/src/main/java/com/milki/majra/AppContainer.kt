@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.milki.majra.data.db.MajraDatabase
 import com.milki.majra.data.local.SessionStore
 import com.milki.majra.data.platform.facebook.FacebookFeedSourceClient
+import com.milki.majra.data.platform.facebook.FacebookGraphQLParser
 import com.milki.majra.data.platform.facebook.FacebookWebViewScraper
 import com.milki.majra.data.platform.instagram.InstagramFeedSourceClient
 import com.milki.majra.data.platform.instagram.InstagramHttpClient
@@ -31,7 +32,8 @@ class AppContainer(context: Context) {
 
     // ── Facebook ─────────────────────────────────────────────────────────
 
-    private val facebookScraper = FacebookWebViewScraper(applicationContext, sessionStore)
+    private val facebookGraphQLParser = FacebookGraphQLParser()
+    private val facebookWebViewScraper = FacebookWebViewScraper(applicationContext, sessionStore)
 
     // ── Repository (platform-agnostic) ───────────────────────────────────
 
@@ -44,7 +46,8 @@ class AppContainer(context: Context) {
                 parser = instagramParser,
             ),
             FacebookFeedSourceClient(
-                scraper = facebookScraper,
+                scraper = facebookWebViewScraper,
+                parser = facebookGraphQLParser,
             ),
         ),
         clock = { System.currentTimeMillis() },

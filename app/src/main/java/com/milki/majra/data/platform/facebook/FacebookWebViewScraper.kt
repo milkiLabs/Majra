@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import com.milki.majra.BuildConfig
 
 /**
  * Facebook scraper that intercepts GraphQL responses from the WebView.
@@ -39,7 +40,7 @@ class FacebookWebViewScraper(
         // Load the timeline/posts page directly
         val url = "https://www.facebook.com/$cleanUsername/posts"
         
-        Log.d(TAG, "Loading Facebook timeline with GraphQL interception: $url")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Loading Facebook timeline with GraphQL interception: $url")
 
         syncCookies(session.cookie)
 
@@ -67,7 +68,7 @@ class FacebookWebViewScraper(
         webView.webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
                 consoleMessage?.let {
-                    Log.d(TAG, "JS: ${it.message()}")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "JS: ${it.message()}")
                 }
                 return true
             }
@@ -77,11 +78,11 @@ class FacebookWebViewScraper(
         
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
-                Log.d(TAG, "Page finished: $url")
+                if (BuildConfig.DEBUG) Log.d(TAG, "Page finished: $url")
                 
                 // Inject GraphQL interception script immediately
                 view?.evaluateJavascript(GRAPHQL_INTERCEPT_SCRIPT) { result ->
-                    Log.d(TAG, "Interception script injected: $result")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "Interception script injected: $result")
                 }
                 
                 if (!pageLoaded.isCompleted) {
@@ -93,27 +94,27 @@ class FacebookWebViewScraper(
         webView.loadUrl(url)
 
         try {
-            withTimeout(30000) {
+            withTimeout(60000) { // Increased to 60 seconds for pagination
                 pageLoaded.await()
                 
                 // Wait for initial GraphQL responses
-                Log.d(TAG, "Waiting for initial GraphQL responses...")
+                if (BuildConfig.DEBUG) Log.d(TAG, "Waiting for initial GraphQL responses...")
                 delay(4000)
                 
                 // Scroll down multiple times to trigger timeline post loading
-                Log.d(TAG, "Scrolling to trigger timeline loading (scrollCount: $scrollCount)...")
+                if (BuildConfig.DEBUG) Log.d(TAG, "Scrolling to trigger timeline loading (scrollCount: $scrollCount)...")
                 for (i in 1..scrollCount) {
                     val scrollY = i * 800
                     webView.evaluateJavascript("window.scrollTo(0, $scrollY);", null)
-                    delay(1500)
+                    delay(1000) // Reduced from 1500ms to 1000ms for faster pagination
                 }
                 
                 // Wait for timeline GraphQL requests to complete
-                Log.d(TAG, "Waiting for timeline GraphQL responses...")
-                delay(5000)
+                if (BuildConfig.DEBUG) Log.d(TAG, "Waiting for timeline GraphQL responses...")
+                delay(3000) // Reduced from 5000ms to 3000ms
                 
                 // Extract images from the rendered DOM as well
-                Log.d(TAG, "Extracting images from rendered page...")
+                if (BuildConfig.DEBUG) Log.d(TAG, "Extracting images from rendered page...")
                 webView.evaluateJavascript("""
                     (function() {
                         const images = [];
@@ -147,16 +148,16 @@ class FacebookWebViewScraper(
                         return JSON.stringify({imageCount: images.length, videoCount: videos.length});
                     })();
                 """.trimIndent()) { result ->
-                    Log.d(TAG, "Image extraction result: $result")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "Image extraction result: $result")
                 }
                 delay(1000)
                 
-                Log.d(TAG, "Extracting captured GraphQL data")
+                if (BuildConfig.DEBUG) Log.d(TAG, "Extracting captured GraphQL data")
                 
                 val deferred = CompletableDeferred<String>()
                 webView.evaluateJavascript(GET_CAPTURED_GRAPHQL_SCRIPT) { value ->
                     val result = value ?: """{"posts":[]}"""
-                    Log.d(TAG, "Captured GraphQL data length: ${result.length}")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "Captured GraphQL data length: ${result.length}")
                     
                     // Save for debugging
                     try {
@@ -166,7 +167,7 @@ class FacebookWebViewScraper(
                             .replace("\\\"", "\"")
                             .replace("\\\\", "\\")
                         debugFile.writeText(cleanResult)
-                        Log.d(TAG, "Saved captured GraphQL to: ${debugFile.absolutePath}")
+                        if (BuildConfig.DEBUG) Log.d(TAG, "Saved captured GraphQL to: ${debugFile.absolutePath}")
                     } catch (e: Exception) {
                         Log.w(TAG, "Could not save debug file: ${e.message}")
                     }
@@ -203,7 +204,7 @@ class FacebookWebViewScraper(
         }
         cookieManager.flush()
         
-        Log.d(TAG, "Synced ${parts.size} cookie parts")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Synced ${parts.size} cookie parts")
     }
 
     private fun String.trimUsername(): String = trim().removePrefix("@").trim('/').lowercase()

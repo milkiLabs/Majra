@@ -5,6 +5,7 @@ import com.milki.majra.data.model.Platform
 import com.milki.majra.data.model.SocialProfile
 import com.milki.majra.data.repository.FeedSourceClient
 import com.milki.majra.data.repository.SourceSyncPage
+import com.milki.majra.BuildConfig
 
 /**
  * Facebook feed source client using WebView with GraphQL interception.
@@ -21,18 +22,18 @@ class FacebookFeedSourceClient(
     override suspend fun syncProfile(sourceId: String): SourceSyncPage {
         val username = sourceId.trimUsername()
         
-        Log.d(TAG, "Starting WebView GraphQL sync for Facebook profile: $username")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Starting WebView GraphQL sync for Facebook profile: $username")
         
         try {
             // Scrape profile using WebView with GraphQL interception (initial load with 5 scrolls)
             val jsonResult = scraper.scrapeProfile(username, scrollCount = 5)
             
-            Log.d(TAG, "Received GraphQL data, length: ${jsonResult.length}")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Received GraphQL data, length: ${jsonResult.length}")
             
             // Parse the captured GraphQL data
             val parsed = parser.parseGraphQLData(username, jsonResult)
             
-            Log.d(TAG, "Parsed result: ${parsed.posts.size} posts")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Parsed result: ${parsed.posts.size} posts")
             
             // Facebook pagination: we can always load more by scrolling more
             // Set hasMorePosts to true if we got any posts
@@ -54,34 +55,37 @@ class FacebookFeedSourceClient(
     override suspend fun loadOlderPosts(profile: SocialProfile): SourceSyncPage {
         val username = profile.username
         
-        Log.d(TAG, "Loading older posts for Facebook profile: $username")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Loading older posts for Facebook profile: $username")
         
         try {
             // Parse the pagination token to get scroll count
             val currentScrollCount = profile.nextPageToken?.removePrefix("scroll:")?.toIntOrNull() ?: 5
-            val newScrollCount = currentScrollCount + 5 // Scroll 5 more times
+            // Only add 3 more scrolls each time to avoid timeout
+            val newScrollCount = currentScrollCount + 3
             
-            Log.d(TAG, "Scrolling $newScrollCount times to load older posts")
+            // Cap at 20 scrolls to avoid excessive loading time
+            val cappedScrollCount = minOf(newScrollCount, 20)
+            
+            if (BuildConfig.DEBUG) Log.d(TAG, "Scrolling $cappedScrollCount times to load older posts (was $currentScrollCount)")
             
             // Scrape with more scrolls to get older posts
-            val jsonResult = scraper.scrapeProfile(username, scrollCount = newScrollCount)
+            val jsonResult = scraper.scrapeProfile(username, scrollCount = cappedScrollCount)
             
-            Log.d(TAG, "Received GraphQL data, length: ${jsonResult.length}")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Received GraphQL data, length: ${jsonResult.length}")
             
             // Parse the captured GraphQL data
             val parsed = parser.parseGraphQLData(username, jsonResult)
             
-            Log.d(TAG, "Parsed result: ${parsed.posts.size} posts total")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Parsed result: ${parsed.posts.size} posts total")
             
-            // Always allow loading more posts (user can keep scrolling)
-            // We'll stop when no new posts are found
-            val hasMorePosts = parsed.posts.isNotEmpty()
+            // Allow loading more posts unless we've hit the cap
+            val hasMorePosts = parsed.posts.isNotEmpty() && cappedScrollCount < 20
             
             return SourceSyncPage(
                 account = parsed.account,
                 userId = parsed.account.accountId,
                 posts = parsed.posts, // Return all posts, the repository will deduplicate
-                nextPageToken = if (hasMorePosts) "scroll:$newScrollCount" else null,
+                nextPageToken = if (hasMorePosts) "scroll:$cappedScrollCount" else null,
                 hasMorePosts = hasMorePosts,
             )
         } catch (e: Exception) {

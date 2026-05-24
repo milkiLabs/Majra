@@ -6,6 +6,7 @@ import com.milki.majra.data.model.PostMediaItem
 import com.milki.majra.data.model.SocialPost
 import com.milki.majra.data.model.SocialProfile
 import org.json.JSONObject
+import com.milki.majra.BuildConfig
 
 /**
  * Parser for GraphQL data captured from Facebook's WebView.
@@ -21,7 +22,7 @@ class FacebookGraphQLParser {
     )
 
     fun parseGraphQLData(username: String, jsonString: String): ParsedProfile {
-        Log.d(TAG, "Parsing GraphQL data for: $username, length: ${jsonString.length}")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Parsing GraphQL data for: $username, length: ${jsonString.length}")
         
         try {
             // Remove quotes and unescape if needed
@@ -74,12 +75,12 @@ class FacebookGraphQLParser {
                 }
             }
             
-            Log.d(TAG, "Parsed ${posts.size} posts from GraphQL data")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Parsed ${posts.size} posts from GraphQL data")
             
             // Log debug info if available
             if (json.has("debug")) {
                 val debug = json.getJSONObject("debug")
-                Log.d(TAG, "Debug info: capturedCount=${debug.optInt("capturedCount")}, extractedPosts=${debug.optInt("extractedPosts")}")
+                if (BuildConfig.DEBUG) Log.d(TAG, "Debug info: capturedCount=${debug.optInt("capturedCount")}, extractedPosts=${debug.optInt("extractedPosts")}")
             }
             
             // Sort posts by timestamp descending (newest first) and deduplicate
@@ -87,7 +88,7 @@ class FacebookGraphQLParser {
                 .distinctBy { it.id }
                 .sortedByDescending { it.timestampSeconds }
             
-            Log.d(TAG, "Returning ${sortedPosts.size} posts sorted by timestamp (newest first)")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Returning ${sortedPosts.size} posts sorted by timestamp (newest first)")
             
             return ParsedProfile(
                 account = account,
@@ -116,7 +117,7 @@ class FacebookGraphQLParser {
         // Only skip if BOTH text is empty AND no media exists
         // Don't skip too aggressively - let posts through even if extraction might have failed
         if (text.isBlank() && !hasMedia) {
-            Log.d(TAG, "Skipping post with no content: $postId")
+            if (BuildConfig.DEBUG) Log.d(TAG, "Skipping post with no content: $postId")
             return null
         }
         
@@ -186,7 +187,7 @@ class FacebookGraphQLParser {
             else -> SocialPost.MEDIA_TYPE_IMAGE
         }
         
-        Log.d(TAG, "Parsed post: $postId, media: ${mediaItems.size}, type: $mediaType, shared: $isShared")
+        if (BuildConfig.DEBUG) Log.d(TAG, "Parsed post: $postId, media: ${mediaItems.size}, type: $mediaType, shared: $isShared")
         
         return SocialPost(
             platform = Platform.FACEBOOK,

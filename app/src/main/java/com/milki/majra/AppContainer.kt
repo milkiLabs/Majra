@@ -31,7 +31,8 @@ class AppContainer(context: Context) {
 
     // ── Facebook ─────────────────────────────────────────────────────────
 
-    private val facebookWebViewScraper = FacebookWebViewScraper(applicationContext, sessionStore)
+    private val facebookGraphQLParser = FacebookGraphQLParser()
+    private val facebookHttpClient = FacebookHttpClient(sessionStore)
 
     // ── Repository (platform-agnostic) ───────────────────────────────────
 
@@ -44,7 +45,8 @@ class AppContainer(context: Context) {
                 parser = instagramParser,
             ),
             FacebookFeedSourceClient(
-                scraper = facebookWebViewScraper,
+                httpClient = facebookHttpClient,
+                graphQLParser = facebookGraphQLParser,
             ),
         ),
         clock = { System.currentTimeMillis() },

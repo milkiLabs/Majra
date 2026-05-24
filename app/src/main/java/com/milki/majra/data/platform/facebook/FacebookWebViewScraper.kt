@@ -112,6 +112,45 @@ class FacebookWebViewScraper(
                 Log.d(TAG, "Waiting for timeline GraphQL responses...")
                 delay(5000)
                 
+                // Extract images from the rendered DOM as well
+                Log.d(TAG, "Extracting images from rendered page...")
+                webView.evaluateJavascript("""
+                    (function() {
+                        const images = [];
+                        // Find ALL images with scontent (Facebook CDN)
+                        document.querySelectorAll('img').forEach(img => {
+                            if (img.src && img.src.includes('scontent')) {
+                                images.push({
+                                    src: img.src,
+                                    width: img.width || img.naturalWidth || 0,
+                                    height: img.height || img.naturalHeight || 0,
+                                    alt: img.alt || ''
+                                });
+                            }
+                        });
+                        
+                        // Find all videos
+                        const videos = [];
+                        document.querySelectorAll('video').forEach(vid => {
+                            if (vid.src) {
+                                videos.push(vid.src);
+                            }
+                        });
+                        
+                        console.log('[ImageDebug] Found ' + images.length + ' images and ' + videos.length + ' videos');
+                        
+                        // Log first few images
+                        for (let i = 0; i < Math.min(5, images.length); i++) {
+                            console.log('[ImageDebug] Image ' + i + ': ' + images[i].width + 'x' + images[i].height + ' - ' + images[i].src.substring(0, 100));
+                        }
+                        
+                        return JSON.stringify({imageCount: images.length, videoCount: videos.length});
+                    })();
+                """.trimIndent()) { result ->
+                    Log.d(TAG, "Image extraction result: $result")
+                }
+                delay(1000)
+                
                 Log.d(TAG, "Extracting captured GraphQL data")
                 
                 val deferred = CompletableDeferred<String>()
@@ -307,8 +346,8 @@ class FacebookWebViewScraper(
         """.trimIndent()
 
         /**
-         * JavaScript to extract and parse captured GraphQL responses.
-         * This processes the intercepted data and extracts posts.
+         * JavaScript to extract and parse captured GraphQL responses AND rendered DOM.
+         * This processes the intercepted data and extracts posts, then enriches with DOM images.
          */
         private val GET_CAPTURED_GRAPHQL_SCRIPT = """
 (function() {
@@ -324,7 +363,7 @@ class FacebookWebViewScraper(
         // Save raw captured data for debugging
         const rawDebug = [];
         
-        // Process each captured GraphQL response
+        // First pass: Extract all posts
         for (let i = 0; i < captured.length; i++) {
             const item = captured[i];
             const data = item.data;
@@ -351,7 +390,20 @@ class FacebookWebViewScraper(
             }
         }
         
-        console.log('[Extractor] Extracted ' + posts.length + ' posts');
+        console.log('[Extractor] Extracted ' + posts.length + ' posts from GraphQL');
+        
+        // Second pass: Look for attachment/media data and match to posts by ID
+        console.log('[Extractor] Searching for attachment data in responses...');
+        for (let i = 0; i < captured.length; i++) {
+            const item = captured[i];
+            const data = item.data;
+            if (!data) continue;
+            
+            // Search for media/attachment data
+            findAndMatchMedia(data, posts);
+        }
+        
+        console.log('[Extractor] Total posts with images: ' + posts.filter(p => p.images.length > 0).length);
         
         // If no display name found, try from page title
         if (!displayName) {
@@ -376,6 +428,75 @@ class FacebookWebViewScraper(
             posts: [],
             debug: e.stack
         });
+    }
+    
+    // Find and match media/attachment data to posts
+    function findAndMatchMedia(obj, posts) {
+        if (!obj || typeof obj !== 'object') return;
+        
+        // Look for objects with both 'id' and media-related fields
+        if (obj.id && (obj.image || obj.photo_image || obj.media || obj.attachments)) {
+            const id = String(obj.id);
+            
+            // Find matching post
+            const post = posts.find(p => p.id === id || p.id.includes(id) || id.includes(p.id));
+            
+            if (post) {
+                // Extract images
+                if (obj.image?.uri) {
+                    if (!post.images.includes(obj.image.uri)) {
+                        post.images.push(obj.image.uri);
+                        console.log('[Extractor] Matched image to post: ' + id.substring(0, 30));
+                    }
+                }
+                if (obj.photo_image?.uri) {
+                    if (!post.images.includes(obj.photo_image.uri)) {
+                        post.images.push(obj.photo_image.uri);
+                        console.log('[Extractor] Matched photo to post: ' + id.substring(0, 30));
+                    }
+                }
+                
+                // Extract from media object
+                if (obj.media) {
+                    if (obj.media.image?.uri && !post.images.includes(obj.media.image.uri)) {
+                        post.images.push(obj.media.image.uri);
+                    }
+                    if (obj.media.photo_image?.uri && !post.images.includes(obj.media.photo_image.uri)) {
+                        post.images.push(obj.media.photo_image.uri);
+                    }
+                    if (obj.media.playable_url && !post.video) {
+                        post.video = obj.media.playable_url;
+                    }
+                }
+                
+                // Extract from attachments array
+                if (obj.attachments && Array.isArray(obj.attachments)) {
+                    for (let att of obj.attachments) {
+                        if (att.media) {
+                            if (att.media.image?.uri && !post.images.includes(att.media.image.uri)) {
+                                post.images.push(att.media.image.uri);
+                            }
+                            if (att.media.photo_image?.uri && !post.images.includes(att.media.photo_image.uri)) {
+                                post.images.push(att.media.photo_image.uri);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Recursively search
+        if (Array.isArray(obj)) {
+            for (let item of obj) {
+                findAndMatchMedia(item, posts);
+            }
+        } else {
+            for (let key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    findAndMatchMedia(obj[key], posts);
+                }
+            }
+        }
     }
     
     // Helper function to recursively find posts in GraphQL response
@@ -420,16 +541,65 @@ class FacebookWebViewScraper(
                 // Extract permalink
                 let permalink = story.url || story.permalink_url || '';
                 
-                // Extract media
+                // Extract media from attachments
                 const images = [];
                 const videos = [];
                 
-                if (story.attachments) {
-                    const atts = Array.isArray(story.attachments) ? story.attachments : [story.attachments];
-                    for (let att of atts) {
+                if (story.attachments && Array.isArray(story.attachments)) {
+                    for (let att of story.attachments) {
+                        // Facebook attachment structure: attachment.media or attachment.style_type_renderer
                         if (att.media) {
-                            if (att.media.image?.uri) images.push(att.media.image.uri);
-                            if (att.media.source) videos.push(att.media.source);
+                            // Image in media.image.uri or media.photo_image.uri
+                            if (att.media.image?.uri) {
+                                images.push(att.media.image.uri);
+                            } else if (att.media.photo_image?.uri) {
+                                images.push(att.media.photo_image.uri);
+                            }
+                            // Video in media.playable_url or media.source
+                            if (att.media.playable_url) {
+                                videos.push(att.media.playable_url);
+                            } else if (att.media.source) {
+                                videos.push(att.media.source);
+                            }
+                        }
+                        
+                        // Check for style_type_renderer (another Facebook structure)
+                        if (att.style_type_renderer) {
+                            const renderer = att.style_type_renderer;
+                            // Look for attachment.attachment
+                            if (renderer.attachment) {
+                                const innerAtt = renderer.attachment;
+                                if (innerAtt.media) {
+                                    if (innerAtt.media.image?.uri) {
+                                        images.push(innerAtt.media.image.uri);
+                                    } else if (innerAtt.media.photo_image?.uri) {
+                                        images.push(innerAtt.media.photo_image.uri);
+                                    }
+                                    if (innerAtt.media.playable_url) {
+                                        videos.push(innerAtt.media.playable_url);
+                                    } else if (innerAtt.media.source) {
+                                        videos.push(innerAtt.media.source);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Check for all_subattachments (carousel/album)
+                        if (att.all_subattachments?.nodes) {
+                            for (let sub of att.all_subattachments.nodes) {
+                                if (sub.media) {
+                                    if (sub.media.image?.uri) {
+                                        images.push(sub.media.image.uri);
+                                    } else if (sub.media.photo_image?.uri) {
+                                        images.push(sub.media.photo_image.uri);
+                                    }
+                                    if (sub.media.playable_url) {
+                                        videos.push(sub.media.playable_url);
+                                    } else if (sub.media.source) {
+                                        videos.push(sub.media.source);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -443,7 +613,7 @@ class FacebookWebViewScraper(
                     permalink: permalink
                 });
                 
-                console.log('[Extractor] Found Story post: ' + postId + ', text: ' + text.substring(0, 50));
+                console.log('[Extractor] Found Story post: ' + postId + ', text: ' + text.substring(0, 50) + ', images: ' + images.length + ', videos: ' + videos.length);
             }
         }
         
@@ -512,7 +682,7 @@ class FacebookWebViewScraper(
                     permalink: permalink
                 });
                 
-                console.log('[Extractor] Found generic post: ' + postId + ', text: ' + text.substring(0, 50));
+                console.log('[Extractor] Found generic post: ' + postId + ', text: ' + text.substring(0, 50) + ', images: ' + images.length);
             }
         }
         

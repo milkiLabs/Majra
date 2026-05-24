@@ -2,74 +2,155 @@ package com.milki.majra.data.platform.facebook
 
 import android.util.Log
 import com.milki.majra.data.model.Platform
+import com.milki.majra.data.model.PostMediaItem
+import com.milki.majra.data.model.SocialPost
 import com.milki.majra.data.model.SocialProfile
 import com.milki.majra.data.repository.FeedSourceClient
 import com.milki.majra.data.repository.SourceSyncPage
+import org.json.JSONObject
 
 /**
- * Facebook feed source client using GraphQL API.
- * Much faster and more reliable than WebView scraping.
+ * Facebook feed source client using WebView scraping.
  */
 class FacebookFeedSourceClient(
-    private val httpClient: FacebookHttpClient,
-    private val graphQLParser: FacebookGraphQLParser,
+    private val scraper: FacebookWebViewScraper,
 ) : FeedSourceClient {
     override val platform: Platform = Platform.FACEBOOK
 
     override suspend fun syncProfile(sourceId: String): SourceSyncPage {
         val username = sourceId.trimUsername()
         
-        Log.d(TAG, "Starting GraphQL sync for Facebook profile: $username")
+        Log.d(TAG, "Starting mobile WebView sync for Facebook profile: $username")
         
         try {
-            // Fetch timeline using GraphQL
-            val jsonResponse = httpClient.fetchTimelineGraphQL(username)
+            // Scrape profile using mobile WebView
+            val jsonString = scraper.scrapeProfile(username)
             
-            Log.d(TAG, "Received GraphQL response, length: ${jsonResponse.length}")
+            Log.d(TAG, "Received scraped data, length: ${jsonString.length}")
             
-            // Parse the GraphQL response
-            val parsed = graphQLParser.parseTimelineResponse(username, jsonResponse)
+            // Parse the JSON response
+            val json = JSONObject(jsonString)
             
-            Log.d(TAG, "Parsed result: ${parsed.posts.size} posts, hasMore: ${parsed.hasMorePosts}, cursor: ${parsed.nextCursor}")
+            if (json.has("error")) {
+                val error = json.getString("error")
+                Log.e(TAG, "Scraping error: $error")
+                throw FacebookScrapingException("Failed to scrape profile: $error")
+            }
+            
+            val displayName = json.optString("displayName", username)
+            val profilePicUrl = json.optString("profilePicUrl").takeIf { it.isNotBlank() }
+            val userId = json.optString("userId", username)
+            
+            val account = SocialProfile(
+                platform = Platform.FACEBOOK,
+                username = username,
+                accountId = userId,
+                displayName = displayName,
+                profilePicUrl = profilePicUrl,
+            )
+            
+            val postsArray = json.optJSONArray("posts")
+            val posts = mutableListOf<SocialPost>()
+            
+            if (postsArray != null) {
+                for (i in 0 until postsArray.length()) {
+                    val postJson = postsArray.getJSONObject(i)
+                    val post = parsePost(postJson, userId, username)
+                    if (post != null) {
+                        posts.add(post)
+                    }
+                }
+            }
+            
+            Log.d(TAG, "Parsed ${posts.size} posts from WebView")
             
             return SourceSyncPage(
-                account = parsed.account,
-                userId = parsed.account.accountId,
-                posts = parsed.posts,
-                nextPageToken = parsed.nextCursor,
-                hasMorePosts = parsed.hasMorePosts,
+                account = account,
+                userId = userId,
+                posts = posts,
+                nextPageToken = null,
+                hasMorePosts = false,
             )
         } catch (e: Exception) {
-            Log.e(TAG, "GraphQL sync failed: ${e.message}", e)
+            Log.e(TAG, "WebView sync failed: ${e.message}", e)
             throw e
         }
     }
 
     override suspend fun loadOlderPosts(profile: SocialProfile): SourceSyncPage {
-        val cursor = profile.nextPageToken 
-            ?: error("No older posts are available for @${profile.username}.")
-        
-        Log.d(TAG, "Loading older posts for ${profile.username} with cursor: $cursor")
-        
+        // WebView scraper doesn't support pagination
+        Log.d(TAG, "WebView scraper doesn't support pagination")
+        return SourceSyncPage(
+            account = profile,
+            userId = profile.accountId,
+            posts = emptyList(),
+            nextPageToken = null,
+            hasMorePosts = false,
+        )
+    }
+    
+    private fun parsePost(json: JSONObject, userId: String, username: String): SocialPost? {
         try {
-            // Fetch next page using cursor
-            val jsonResponse = httpClient.fetchTimelineGraphQL(profile.username, cursor)
+            val postId = json.optString("id")
+            if (postId.isBlank()) return null
             
-            // Parse the GraphQL response
-            val parsed = graphQLParser.parseTimelineResponse(profile.username, jsonResponse)
+            val text = json.optString("text", "")
+            val timestamp = json.optLong("timestamp", System.currentTimeMillis() / 1000)
+            val permalink = json.optString("permalink", "https://www.facebook.com/$username/posts/$postId")
             
-            Log.d(TAG, "Loaded ${parsed.posts.size} older posts")
+            val mediaItems = mutableListOf<PostMediaItem>()
             
-            return SourceSyncPage(
-                account = profile,
-                userId = profile.accountId,
-                posts = parsed.posts,
-                nextPageToken = parsed.nextCursor,
-                hasMorePosts = parsed.hasMorePosts,
+            // Extract images
+            val imagesArray = json.optJSONArray("images")
+            if (imagesArray != null) {
+                for (i in 0 until imagesArray.length()) {
+                    val imageUrl = imagesArray.optString(i)
+                    if (imageUrl.isNotBlank()) {
+                        mediaItems.add(
+                            PostMediaItem(
+                                imageUrl = imageUrl,
+                                videoUrl = null,
+                                mediaType = PostMediaItem.MEDIA_TYPE_IMAGE,
+                            )
+                        )
+                    }
+                }
+            }
+            
+            // Extract video
+            val videoUrl = json.optString("video").takeIf { it.isNotBlank() }
+            if (videoUrl != null) {
+                mediaItems.add(
+                    PostMediaItem(
+                        imageUrl = "",
+                        videoUrl = videoUrl,
+                        mediaType = PostMediaItem.MEDIA_TYPE_VIDEO,
+                    )
+                )
+            }
+            
+            val postMediaType = when {
+                mediaItems.any { it.mediaType == PostMediaItem.MEDIA_TYPE_VIDEO } -> SocialPost.MEDIA_TYPE_VIDEO
+                mediaItems.size > 1 -> SocialPost.MEDIA_TYPE_CAROUSEL
+                mediaItems.size == 1 -> SocialPost.MEDIA_TYPE_IMAGE
+                else -> SocialPost.MEDIA_TYPE_IMAGE
+            }
+            
+            return SocialPost(
+                platform = Platform.FACEBOOK,
+                id = postId,
+                platformPostId = postId,
+                accountId = userId,
+                username = username,
+                mediaType = postMediaType,
+                caption = text,
+                timestampSeconds = timestamp,
+                permalink = permalink,
+                mediaItems = mediaItems,
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Loading older posts failed: ${e.message}", e)
-            throw e
+            Log.e(TAG, "Error parsing post: ${e.message}", e)
+            return null
         }
     }
 
@@ -79,3 +160,5 @@ class FacebookFeedSourceClient(
         private const val TAG = "FacebookFeedSource"
     }
 }
+
+class FacebookScrapingException(message: String, cause: Throwable? = null) : Exception(message, cause)

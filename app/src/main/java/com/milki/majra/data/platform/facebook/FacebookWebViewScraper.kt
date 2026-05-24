@@ -15,43 +15,72 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
+/**
+ * Facebook scraper using mobile web (m.facebook.com) for simpler, more reliable extraction.
+ * 
+ * Architecture:
+ * 1. Load m.facebook.com/{username} with cookies
+ * 2. Wait for page to fully load (no scrolling needed - mobile shows posts immediately)
+ * 3. Extract posts from simple mobile DOM structure
+ * 4. Parse story containers which have consistent structure
+ */
 class FacebookWebViewScraper(
     private val context: Context,
     private val sessionStore: SessionStore,
 ) {
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun scrapeProfile(username: String, scrollCount: Int = 3): String = withContext(Dispatchers.Main) {
+    suspend fun scrapeProfile(username: String): String = withContext(Dispatchers.Main) {
         val session = sessionStore.current(Platform.FACEBOOK)
         val cleanUsername = username.trimUsername()
-        val url = "https://www.facebook.com/$cleanUsername?sk=timeline"
+        
+        // Use mobile Facebook - much simpler DOM, posts load immediately
+        val url = "https://m.facebook.com/$cleanUsername"
+        
+        Log.d(TAG, "Loading mobile Facebook profile: $url")
 
         syncCookies(session.cookie)
 
         val webView = WebView(context)
+        
+        // Mobile viewport size
         webView.measure(
-            View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(412, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(915, View.MeasureSpec.EXACTLY),
         )
-        webView.layout(0, 0, 1080, 1920)
+        webView.layout(0, 0, 412, 915)
 
         @Suppress("DEPRECATION")
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-            userAgentString = DESKTOP_USER_AGENT
+            userAgentString = MOBILE_USER_AGENT
             loadWithOverviewMode = true
-            useWideViewPort = true
+            useWideViewPort = false
             builtInZoomControls = false
             displayZoomControls = false
             blockNetworkImage = false
         }
+        
+        // Enable console logging
+        webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                consoleMessage?.let {
+                    Log.d(TAG, "JS Console: ${it.message()}")
+                }
+                return true
+            }
+        }
 
         val pageLoaded = CompletableDeferred<Unit>()
+        var loadCount = 0
+        
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
-                Log.d(TAG, "onPageFinished: $url")
-                if (!pageLoaded.isCompleted) {
+                loadCount++
+                Log.d(TAG, "onPageFinished ($loadCount): $url")
+                // Mobile Facebook sometimes triggers multiple loads
+                if (loadCount >= 1 && !pageLoaded.isCompleted) {
                     pageLoaded.complete(Unit)
                 }
             }
@@ -60,33 +89,57 @@ class FacebookWebViewScraper(
         webView.loadUrl(url)
 
         try {
-            withTimeout(90000) {
+            withTimeout(30000) {
                 pageLoaded.await()
-
-                for (i in 0 until 5) {
+                
+                // Wait for content to render - mobile Facebook uses heavy JS
+                Log.d(TAG, "Waiting for JavaScript to render content...")
+                delay(5000)
+                
+                // Check if page is ready
+                for (i in 0 until 10) {
                     val ready = CompletableDeferred<String>()
-                    webView.evaluateJavascript("document.readyState") { v -> ready.complete(v ?: "") }
+                    webView.evaluateJavascript("document.readyState") { v -> 
+                        ready.complete(v ?: "") 
+                    }
                     if (ready.await().trim('"') == "complete") break
                     delay(500)
                 }
-
-                delay(5000)
-
-                val allScrolls = scrollCount * 4
-                for (i in 0 until allScrolls) {
-                    webView.evaluateJavascript(SCROLL_SCRIPT, null)
-                    delay(2000)
+                
+                // Wait for React/WebLite to render posts
+                Log.d(TAG, "Waiting for posts to render...")
+                delay(8000)
+                
+                Log.d(TAG, "Extracting posts from mobile DOM")
+                
+                // First, save the HTML for debugging
+                val htmlDeferred = CompletableDeferred<String>()
+                webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                    htmlDeferred.complete(html ?: "")
                 }
-
-                delay(5000)
-
+                val htmlContent = htmlDeferred.await()
+                
+                // Save to file for inspection
+                try {
+                    val debugFile = java.io.File("/sdcard/Download/facebook_mobile_page.html")
+                    // Remove quotes and unescape
+                    val cleanHtml = htmlContent.trim('"').replace("\\n", "\n").replace("\\\"", "\"")
+                    debugFile.writeText(cleanHtml)
+                    Log.d(TAG, "Saved mobile HTML to: ${debugFile.absolutePath}, size: ${cleanHtml.length}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not save debug HTML: ${e.message}")
+                }
+                
                 val deferred = CompletableDeferred<String>()
-                webView.evaluateJavascript(EXTRACTION_SCRIPT) { value ->
-                    deferred.complete(value ?: """{"posts":[]}""")
+                webView.evaluateJavascript(MOBILE_EXTRACTION_SCRIPT) { value ->
+                    val result = value ?: """{"posts":[]}"""
+                    Log.d(TAG, "Extraction result length: ${result.length}")
+                    deferred.complete(result)
                 }
                 deferred.await()
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Scraping failed: ${e.message}", e)
             """{"error":"${e.message?.replace("\"", "\\\"")?.replace("\n", "\\n") ?: "Unknown"}","posts":[]}"""
         } finally {
             webView.stopLoading()
@@ -97,141 +150,152 @@ class FacebookWebViewScraper(
     private fun syncCookies(cookie: String) {
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(WebView(context), true)
+        
         val parts = cookie.split(";").map { it.trim() }.filter { it.isNotBlank() }
-        val domains = listOf("https://facebook.com", "https://www.facebook.com")
+        val domains = listOf(
+            "https://facebook.com",
+            "https://www.facebook.com",
+            "https://m.facebook.com"
+        )
+        
         for (part in parts) {
             for (domain in domains) {
                 cookieManager.setCookie(domain, part)
             }
         }
         cookieManager.flush()
+        
+        Log.d(TAG, "Synced ${parts.size} cookie parts to Facebook domains")
     }
 
     private fun String.trimUsername(): String = trim().removePrefix("@").trim('/').lowercase()
 
     companion object {
         private const val TAG = "FBWebViewScraper"
-        private const val DESKTOP_USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        
+        // Mobile user agent for simpler page structure
+        private const val MOBILE_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-        private const val SCROLL_SCRIPT = "window.scrollBy(0, window.innerHeight * 0.8);"
-
-        private val EXTRACTION_SCRIPT = """
+        /**
+         * Extraction script for mobile Facebook (m.facebook.com)
+         * 
+         * Mobile Facebook structure:
+         * - Modern m.facebook uses React/WebLite with dynamic rendering
+         * - Posts may be in various container types
+         * - Need to search broadly for post indicators
+         */
+        private val MOBILE_EXTRACTION_SCRIPT = """
 (function() {
     try {
+        // Debug: log what we find
+        console.log('Starting extraction...');
+        console.log('Document title: ' + document.title);
+        console.log('Body text length: ' + document.body.textContent.length);
+        
+        // Extract profile info
         var displayName = '';
         var title = (document.title || '').replace(/\s*[-|–]\s*Facebook/i, '').trim();
-        if (title && title.toLowerCase() !== 'facebook' && title.toLowerCase() !== 'error') displayName = title;
-        if (!displayName) {
-            var h1 = document.querySelector('h1');
-            if (h1) displayName = h1.textContent.trim();
+        if (title && title.toLowerCase() !== 'facebook' && title.toLowerCase() !== 'error') {
+            displayName = title;
         }
-
+        
+        console.log('Display name: ' + displayName);
+        
+        // Profile picture
         var profilePicUrl = '';
-        var picEl = document.querySelector('img[alt*="profile" i]');
-        if (!picEl) picEl = document.querySelector('image[href*="scontent"]');
-        if (picEl) profilePicUrl = picEl.src || picEl.getAttribute('href') || '';
-        if (!profilePicUrl) {
-            var imgs = document.querySelectorAll('img');
-            for (var i = 0; i < imgs.length; i++) {
-                var s = imgs[i].src || '';
-                if (s.indexOf('scontent') > -1 && s.indexOf('/v/') > -1) { profilePicUrl = s; break; }
+        var imgs = document.querySelectorAll('img');
+        console.log('Found ' + imgs.length + ' images');
+        
+        for (var i = 0; i < imgs.length; i++) {
+            var src = imgs[i].src || '';
+            if (src.indexOf('scontent') > -1) {
+                profilePicUrl = src;
+                break;
             }
         }
-
-        var containers = document.querySelectorAll('[role="article"]');
-        var toProcess = containers.length > 0 ? containers : [];
-
+        
+        // Find all links that might be posts
+        var allLinks = document.querySelectorAll('a');
+        console.log('Found ' + allLinks.length + ' links');
+        
+        var postLinks = [];
+        for (var i = 0; i < allLinks.length; i++) {
+            var href = allLinks[i].href || '';
+            if (href.indexOf('/story.php') > -1 || 
+                href.indexOf('/posts/') > -1 || 
+                href.indexOf('/permalink/') > -1 ||
+                href.match(/[?&]fbid=/)) {
+                postLinks.push({
+                    href: href,
+                    text: allLinks[i].textContent.substring(0, 100)
+                });
+            }
+        }
+        
+        console.log('Found ' + postLinks.length + ' potential post links');
+        
+        // Try to find post containers by looking for common patterns
         var posts = [];
-        for (var i = 0; i < toProcess.length; i++) {
-            var post = extractPost(toProcess[i]);
-            if (post) posts.push(post);
-        }
-
-        var seen = {};
-        var unique = [];
-        for (var i = 0; i < posts.length; i++) {
-            if (!seen[posts[i].id]) { seen[posts[i].id] = true; unique.push(posts[i]); }
-        }
-
-        return { displayName: displayName, profilePicUrl: profilePicUrl, userId: '', posts: unique };
-
-    } catch(e) {
-        return {error: e.message, posts: []};
-    }
-
-    function extractPost(el) {
-        var postId = '';
-        var permalink = '';
-
-        var links = el.tagName === 'A' ? [el] : el.querySelectorAll('a');
-        for (var i = 0; i < links.length; i++) {
-            var h = links[i].href || '';
-            if (!h) continue;
-
-            var m = h.match(/\/story\.php\?.*?story_fbid=(\d+)/i);
-            if (m) { postId = 'sfb_' + m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
-
-            m = h.match(/\/posts\/(\d+)/);
-            if (m) { postId = m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
-
-            m = h.match(/\/posts\/(pfbid[a-zA-Z0-9]+)/);
-            if (m) { postId = m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
-
-            m = h.match(/fbid=(\d+)/);
-            if (m) { postId = 'fbid_' + m[1]; permalink = h.indexOf('http') === 0 ? h : 'https://www.facebook.com' + h; break; }
-        }
-
-        if (!postId) return null;
-
-        if (permalink) {
-            var qIdx = permalink.indexOf('?');
-            if (qIdx > -1) permalink = permalink.substring(0, qIdx);
-        }
-
-        var text = '';
-        var textEl = el.querySelector('[data-ad-comet-preview="message"], [data-testid="post_message"], .userContent, div[dir="auto"]');
-        if (textEl) text = textEl.textContent.trim();
-        if (!text) {
-            var p = el.querySelector('p');
-            if (p) text = p.textContent.trim();
-        }
-        if (!text) {
-            text = (el.innerText || '').replace(/\s+/g, ' ').substring(0, 2000).trim();
-        }
-
-        var images = [];
-        var imgEls = el.querySelectorAll('img');
-        for (var i = 0; i < imgEls.length; i++) {
-            var s = imgEls[i].src || '';
-            if (!s || s.indexOf('emoji') > -1 || s.indexOf('rsrc') > -1 || s.indexOf('static.xx.fbcdn') > -1 || s.indexOf('_nc_ads') > -1 || s.indexOf('pixel') > -1) continue;
-            if (s.indexOf('scontent') > -1 || s.indexOf('fbcdn') > -1 || s.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i)) {
-                if (images.indexOf(s) === -1) images.push(s);
+        var seenIds = {};
+        
+        for (var i = 0; i < postLinks.length; i++) {
+            var link = postLinks[i];
+            var href = link.href;
+            
+            // Extract post ID
+            var postId = '';
+            var match = href.match(/story_fbid=(\d+)/);
+            if (match) {
+                postId = 'story_' + match[1];
+            } else {
+                match = href.match(/\/posts\/([a-zA-Z0-9_-]+)/);
+                if (match) postId = match[1];
+                else {
+                    match = href.match(/[?&]fbid=(\d+)/);
+                    if (match) postId = 'fbid_' + match[1];
+                    else {
+                        match = href.match(/\/permalink\/(\d+)/);
+                        if (match) postId = 'perm_' + match[1];
+                    }
+                }
             }
+            
+            if (!postId || seenIds[postId]) continue;
+            seenIds[postId] = true;
+            
+            // Clean permalink
+            var permalink = href;
+            if (permalink.indexOf('?') > -1) {
+                permalink = permalink.split('?')[0];
+            }
+            if (!permalink.startsWith('http')) {
+                permalink = 'https://m.facebook.com' + permalink;
+            }
+            
+            posts.push({
+                id: postId,
+                text: link.text.trim(),
+                timestamp: Math.floor(Date.now() / 1000),
+                images: [],
+                video: '',
+                permalink: permalink
+            });
         }
-
-        var videoUrl = '';
-        var videoEl = el.querySelector('video');
-        if (videoEl && videoEl.src) videoUrl = videoEl.src;
-        if (!videoUrl) {
-            var v = el.querySelector('a[href*="/videos/"]');
-            if (v) videoUrl = v.href;
-        }
-
-        var timestamp = 0;
-        var abbr = el.querySelector('abbr[data-utime]');
-        if (abbr) { var u = abbr.getAttribute('data-utime'); if (u) timestamp = parseInt(u) * 1000; }
-        if (!timestamp) {
-            var t = el.querySelector('time');
-            if (t && t.getAttribute('datetime')) timestamp = Date.parse(t.getAttribute('datetime'));
-        }
-        if (!timestamp) {
-            var span = el.querySelector('[data-utime]');
-            if (span) { var u = span.getAttribute('data-utime'); if (u) timestamp = parseInt(u) * 1000; }
-        }
-        if (!timestamp) timestamp = Date.now();
-
-        return { id: postId, text: text, timestamp: Math.floor(timestamp / 1000), images: images, video: videoUrl, permalink: permalink };
+        
+        console.log('Extracted ' + posts.length + ' posts');
+        
+        return {
+            displayName: displayName,
+            profilePicUrl: profilePicUrl,
+            userId: '',
+            posts: posts
+        };
+        
+    } catch(e) {
+        console.error('Extraction error: ' + e.message);
+        return {error: e.message, posts: [], debug: e.stack};
     }
 })();
         """.trimIndent()

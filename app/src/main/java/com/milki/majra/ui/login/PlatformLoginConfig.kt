@@ -57,9 +57,28 @@ data class PlatformLoginConfig(
             userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         )
 
+        fun x(): PlatformLoginConfig = PlatformLoginConfig(
+            platform = Platform.X,
+            loginUrl = "https://x.com/i/flow/login",
+            displayName = "X",
+            description = "Majra stores only your X browser cookie locally so it can fetch profiles you choose, including visible images and videos.",
+            successUrlCheck = { url ->
+                val clean = url.substringBefore('?').trimEnd('/')
+                clean == "https://x.com" ||
+                    clean == "https://x.com/home" ||
+                    clean.startsWith("https://x.com/home") ||
+                    clean == "https://twitter.com" ||
+                    clean == "https://twitter.com/home" ||
+                    clean.startsWith("https://twitter.com/home")
+            },
+            cookieDomain = "https://x.com/",
+            sessionCookieCheck = { cookie -> cookie.contains("auth_token=") },
+        )
+
         fun forPlatform(platform: Platform): PlatformLoginConfig = when (platform) {
             Platform.INSTAGRAM -> instagram()
             Platform.FACEBOOK -> facebook()
+            Platform.X -> x()
             else -> throw IllegalArgumentException("${platform.displayName} login is not supported yet.")
         }
     }

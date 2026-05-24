@@ -10,6 +10,9 @@ import com.milki.majra.data.platform.facebook.FacebookWebViewScraper
 import com.milki.majra.data.platform.instagram.InstagramFeedSourceClient
 import com.milki.majra.data.platform.instagram.InstagramHttpClient
 import com.milki.majra.data.platform.instagram.InstagramHtmlParser
+import com.milki.majra.data.platform.x.XFeedSourceClient
+import com.milki.majra.data.platform.x.XGraphQLParser
+import com.milki.majra.data.platform.x.XWebViewScraper
 import com.milki.majra.data.repository.FeedRepository
 
 class AppContainer(context: Context) {
@@ -35,6 +38,11 @@ class AppContainer(context: Context) {
     private val facebookGraphQLParser = FacebookGraphQLParser()
     private val facebookWebViewScraper = FacebookWebViewScraper(applicationContext, sessionStore)
 
+    // -- X / Twitter -------------------------------------------------------
+
+    private val xGraphQLParser = XGraphQLParser()
+    private val xWebViewScraper = XWebViewScraper(applicationContext, sessionStore)
+
     // ── Repository (platform-agnostic) ───────────────────────────────────
 
     val repository: FeedRepository = FeedRepository(
@@ -48,6 +56,10 @@ class AppContainer(context: Context) {
             FacebookFeedSourceClient(
                 scraper = facebookWebViewScraper,
                 parser = facebookGraphQLParser,
+            ),
+            XFeedSourceClient(
+                scraper = xWebViewScraper,
+                parser = xGraphQLParser,
             ),
         ),
         clock = { System.currentTimeMillis() },

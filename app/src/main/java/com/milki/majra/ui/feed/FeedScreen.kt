@@ -182,7 +182,7 @@ private fun PlatformSelector(
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        val platforms = listOf(Platform.INSTAGRAM, Platform.FACEBOOK)
+        val platforms = listOf(Platform.INSTAGRAM, Platform.FACEBOOK, Platform.X)
         platforms.forEach { platform ->
             val isSelected = platform == selected
             Box(

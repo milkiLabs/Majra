@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface FeedDao {
     @Transaction
-    @Query("SELECT * FROM posts ORDER BY timestampSeconds ASC")
+    @Query("SELECT * FROM posts ORDER BY timestampSeconds DESC")
     fun observeFeed(): Flow<List<PostWithAccount>>
 
     @Query("SELECT * FROM accounts ORDER BY platform, username COLLATE NOCASE")

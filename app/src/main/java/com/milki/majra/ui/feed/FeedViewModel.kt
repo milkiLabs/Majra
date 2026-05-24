@@ -26,13 +26,15 @@ class FeedViewModel(
     private val feedData = combine(
         repository.session(Platform.INSTAGRAM),
         repository.session(Platform.FACEBOOK),
+        repository.session(Platform.X),
         repository.feed,
         repository.accounts,
-    ) { igSession, fbSession, feed, accounts ->
+    ) { igSession, fbSession, xSession, feed, accounts ->
         FeedData(
             authenticatedPlatforms = buildSet {
                 if (igSession.isAuthenticated) add(Platform.INSTAGRAM)
                 if (fbSession.isAuthenticated) add(Platform.FACEBOOK)
+                if (xSession.isAuthenticated) add(Platform.X)
             },
             feed = feed,
             accounts = accounts,

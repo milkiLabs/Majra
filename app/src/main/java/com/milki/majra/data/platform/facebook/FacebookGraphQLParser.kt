@@ -100,6 +100,12 @@ class FacebookGraphQLParser {
         // Extract text content
         val text = json.optString("text", "")
         
+        // Skip if text is empty and no media (likely a comment or invalid post)
+        if (text.isBlank() && !json.has("images") && !json.has("videos")) {
+            Log.d(TAG, "Skipping post with no content: $postId")
+            return null
+        }
+        
         // Extract timestamp
         val timestamp = json.optLong("timestamp", System.currentTimeMillis() / 1000)
         
@@ -108,13 +114,45 @@ class FacebookGraphQLParser {
             .takeIf { it.isNotBlank() && it.startsWith("http") }
             ?: "https://www.facebook.com/$username/posts/$postId"
         
+        // Check if this is a shared post
+        val isShared = json.optBoolean("isShared", false)
+        
         // Extract media
         val mediaItems = mutableListOf<PostMediaItem>()
         
-        // Extract images
+        // Extract videos first (they may have thumbnail images too)
+        val videosArray = json.optJSONArray("videos")
+        if (videosArray != null && videosArray.length() > 0) {
+            for (i in 0 until videosArray.length()) {
+                val videoUrl = videosArray.optString(i)
+                if (videoUrl.isNotBlank()) {
+                    // Try to find a thumbnail from images array
+                    val imagesArray = json.optJSONArray("images")
+                    val thumbnailUrl = if (imagesArray != null && imagesArray.length() > i) {
+                        imagesArray.optString(i).takeIf { it.isNotBlank() }
+                    } else {
+                        null
+                    }
+                    
+                    mediaItems.add(
+                        PostMediaItem(
+                            imageUrl = thumbnailUrl ?: videoUrl,
+                            videoUrl = videoUrl,
+                            mediaType = PostMediaItem.MEDIA_TYPE_VIDEO
+                        )
+                    )
+                }
+            }
+        }
+        
+        // Extract images (skip those already used as video thumbnails)
         val imagesArray = json.optJSONArray("images")
         if (imagesArray != null) {
+            val videosCount = videosArray?.length() ?: 0
             for (i in 0 until imagesArray.length()) {
+                // Skip images that were used as video thumbnails
+                if (i < videosCount) continue
+                
                 val imageUrl = imagesArray.optString(i)
                 if (imageUrl.isNotBlank()) {
                     mediaItems.add(
@@ -128,25 +166,15 @@ class FacebookGraphQLParser {
             }
         }
         
-        // Extract video
-        val videoUrl = json.optString("video").takeIf { it.isNotBlank() }
-        if (videoUrl != null) {
-            mediaItems.add(
-                PostMediaItem(
-                    imageUrl = videoUrl, // Use video URL as thumbnail fallback
-                    videoUrl = videoUrl,
-                    mediaType = PostMediaItem.MEDIA_TYPE_VIDEO
-                )
-            )
-        }
-        
         // Determine media type
         val mediaType = when {
+            mediaItems.isEmpty() -> SocialPost.MEDIA_TYPE_IMAGE
             mediaItems.size > 1 -> SocialPost.MEDIA_TYPE_CAROUSEL
             mediaItems.firstOrNull()?.isVideo == true -> SocialPost.MEDIA_TYPE_VIDEO
-            mediaItems.isNotEmpty() -> SocialPost.MEDIA_TYPE_IMAGE
             else -> SocialPost.MEDIA_TYPE_IMAGE
         }
+        
+        Log.d(TAG, "Parsed post: $postId, media: ${mediaItems.size}, type: $mediaType, shared: $isShared")
         
         return SocialPost(
             platform = Platform.FACEBOOK,

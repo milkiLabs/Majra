@@ -346,8 +346,8 @@ class FacebookWebViewScraper(
         """.trimIndent()
 
         /**
-         * JavaScript to extract and parse captured GraphQL responses AND rendered DOM.
-         * This processes the intercepted data and extracts posts, then enriches with DOM images.
+         * JavaScript to extract and parse captured GraphQL responses.
+         * This processes the intercepted data and extracts posts with proper media handling.
          */
         private val GET_CAPTURED_GRAPHQL_SCRIPT = """
 (function() {
@@ -360,9 +360,6 @@ class FacebookWebViewScraper(
         let displayName = '';
         let profilePicUrl = '';
         
-        // Save raw captured data for debugging
-        const rawDebug = [];
-        
         // First pass: Extract all posts
         for (let i = 0; i < captured.length; i++) {
             const item = captured[i];
@@ -370,14 +367,7 @@ class FacebookWebViewScraper(
             
             if (!data) continue;
             
-            console.log('[Extractor] Processing response ' + i + ' from: ' + (item.url || '').substring(0, 50));
-            
-            // Save first 500 chars of each response for debugging
-            rawDebug.push({
-                index: i,
-                url: (item.url || '').substring(0, 100),
-                dataPreview: JSON.stringify(data).substring(0, 500)
-            });
+            console.log('[Extractor] Processing response ' + i);
             
             // Recursively search for post data in the response
             findPosts(data, posts, seenIds);
@@ -391,19 +381,7 @@ class FacebookWebViewScraper(
         }
         
         console.log('[Extractor] Extracted ' + posts.length + ' posts from GraphQL');
-        
-        // Second pass: Look for attachment/media data and match to posts by ID
-        console.log('[Extractor] Searching for attachment data in responses...');
-        for (let i = 0; i < captured.length; i++) {
-            const item = captured[i];
-            const data = item.data;
-            if (!data) continue;
-            
-            // Search for media/attachment data
-            findAndMatchMedia(data, posts);
-        }
-        
-        console.log('[Extractor] Total posts with images: ' + posts.filter(p => p.images.length > 0).length);
+        console.log('[Extractor] Posts with media: ' + posts.filter(p => p.images.length > 0 || p.videos.length > 0).length);
         
         // If no display name found, try from page title
         if (!displayName) {
@@ -416,8 +394,7 @@ class FacebookWebViewScraper(
             posts: posts,
             debug: {
                 capturedCount: captured.length,
-                extractedPosts: posts.length,
-                rawResponses: rawDebug
+                extractedPosts: posts.length
             }
         });
         
@@ -430,83 +407,9 @@ class FacebookWebViewScraper(
         });
     }
     
-    // Find and match media/attachment data to posts
-    function findAndMatchMedia(obj, posts) {
-        if (!obj || typeof obj !== 'object') return;
-        
-        // Look for objects with both 'id' and media-related fields
-        if (obj.id && (obj.image || obj.photo_image || obj.media || obj.attachments)) {
-            const id = String(obj.id);
-            
-            // Find matching post
-            const post = posts.find(p => p.id === id || p.id.includes(id) || id.includes(p.id));
-            
-            if (post) {
-                // Extract images
-                if (obj.image?.uri) {
-                    if (!post.images.includes(obj.image.uri)) {
-                        post.images.push(obj.image.uri);
-                        console.log('[Extractor] Matched image to post: ' + id.substring(0, 30));
-                    }
-                }
-                if (obj.photo_image?.uri) {
-                    if (!post.images.includes(obj.photo_image.uri)) {
-                        post.images.push(obj.photo_image.uri);
-                        console.log('[Extractor] Matched photo to post: ' + id.substring(0, 30));
-                    }
-                }
-                
-                // Extract from media object
-                if (obj.media) {
-                    if (obj.media.image?.uri && !post.images.includes(obj.media.image.uri)) {
-                        post.images.push(obj.media.image.uri);
-                    }
-                    if (obj.media.photo_image?.uri && !post.images.includes(obj.media.photo_image.uri)) {
-                        post.images.push(obj.media.photo_image.uri);
-                    }
-                    if (obj.media.playable_url && !post.video) {
-                        post.video = obj.media.playable_url;
-                    }
-                }
-                
-                // Extract from attachments array
-                if (obj.attachments && Array.isArray(obj.attachments)) {
-                    for (let att of obj.attachments) {
-                        if (att.media) {
-                            if (att.media.image?.uri && !post.images.includes(att.media.image.uri)) {
-                                post.images.push(att.media.image.uri);
-                            }
-                            if (att.media.photo_image?.uri && !post.images.includes(att.media.photo_image.uri)) {
-                                post.images.push(att.media.photo_image.uri);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Recursively search
-        if (Array.isArray(obj)) {
-            for (let item of obj) {
-                findAndMatchMedia(item, posts);
-            }
-        } else {
-            for (let key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    findAndMatchMedia(obj[key], posts);
-                }
-            }
-        }
-    }
-    
     // Helper function to recursively find posts in GraphQL response
     function findPosts(obj, posts, seenIds) {
         if (!obj || typeof obj !== 'object') return;
-        
-        // Facebook uses different structures for posts:
-        // 1. Story/post nodes with __typename: "Story"
-        // 2. Feed edge nodes with comet_sections
-        // 3. Timeline items with creation_story
         
         // Check for Story type (most common in timeline)
         if (obj.__typename === 'Story' || obj.node?.__typename === 'Story') {
@@ -514,6 +417,16 @@ class FacebookWebViewScraper(
             const postId = story.id || story.post_id;
             
             if (postId && !seenIds[postId]) {
+                // Filter out comments - they have comment_rendering_instance or feedback_context
+                if (story.comment_rendering_instance || story.feedback_context?.comment_rendering_instance) {
+                    console.log('[Extractor] Skipping comment: ' + postId.substring(0, 30));
+                    return;
+                }
+                
+                // Filter out shared posts that are just references (we want the original)
+                // Shared posts have attached_story but we'll handle them specially
+                const isSharedPost = story.attached_story != null;
+                
                 seenIds[postId] = true;
                 
                 // Extract text from comet_sections or message
@@ -527,7 +440,16 @@ class FacebookWebViewScraper(
                     }
                 }
                 if (!text && story.message) {
-                    text = story.message.text || story.message;
+                    text = story.message.text || (typeof story.message === 'string' ? story.message : '');
+                }
+                
+                // For shared posts, prepend the sharing text
+                let sharedText = '';
+                if (isSharedPost && story.attached_story) {
+                    const attached = story.attached_story;
+                    if (attached.message) {
+                        sharedText = attached.message.text || (typeof attached.message === 'string' ? attached.message : '');
+                    }
                 }
                 
                 // Extract timestamp
@@ -541,148 +463,68 @@ class FacebookWebViewScraper(
                 // Extract permalink
                 let permalink = story.url || story.permalink_url || '';
                 
-                // Extract media from attachments
+                // Extract media from attachments - use deep recursive search
                 const images = [];
                 const videos = [];
                 
-                if (story.attachments && Array.isArray(story.attachments)) {
-                    for (let att of story.attachments) {
-                        // Facebook attachment structure: attachment.media or attachment.style_type_renderer
-                        if (att.media) {
-                            // Image in media.image.uri or media.photo_image.uri
-                            if (att.media.image?.uri) {
-                                images.push(att.media.image.uri);
-                            } else if (att.media.photo_image?.uri) {
-                                images.push(att.media.photo_image.uri);
-                            }
-                            // Video in media.playable_url or media.source
-                            if (att.media.playable_url) {
-                                videos.push(att.media.playable_url);
-                            } else if (att.media.source) {
-                                videos.push(att.media.source);
-                            }
+                // Deep search for any media URLs in the story object
+                function deepSearchMedia(obj, depth) {
+                    if (!obj || typeof obj !== 'object' || depth > 10) return;
+                    
+                    // Check for image URLs
+                    if (obj.uri && typeof obj.uri === 'string' && obj.uri.includes('scontent')) {
+                        if (!images.includes(obj.uri)) {
+                            images.push(obj.uri);
+                            console.log('[Media] Found image: ' + obj.uri.substring(0, 80));
                         }
-                        
-                        // Check for style_type_renderer (another Facebook structure)
-                        if (att.style_type_renderer) {
-                            const renderer = att.style_type_renderer;
-                            // Look for attachment.attachment
-                            if (renderer.attachment) {
-                                const innerAtt = renderer.attachment;
-                                if (innerAtt.media) {
-                                    if (innerAtt.media.image?.uri) {
-                                        images.push(innerAtt.media.image.uri);
-                                    } else if (innerAtt.media.photo_image?.uri) {
-                                        images.push(innerAtt.media.photo_image.uri);
-                                    }
-                                    if (innerAtt.media.playable_url) {
-                                        videos.push(innerAtt.media.playable_url);
-                                    } else if (innerAtt.media.source) {
-                                        videos.push(innerAtt.media.source);
-                                    }
-                                }
-                            }
+                    }
+                    
+                    // Check for video URLs
+                    if (obj.playable_url && typeof obj.playable_url === 'string') {
+                        if (!videos.includes(obj.playable_url)) {
+                            videos.push(obj.playable_url);
+                            console.log('[Media] Found video: ' + obj.playable_url.substring(0, 80));
                         }
-                        
-                        // Check for all_subattachments (carousel/album)
-                        if (att.all_subattachments?.nodes) {
-                            for (let sub of att.all_subattachments.nodes) {
-                                if (sub.media) {
-                                    if (sub.media.image?.uri) {
-                                        images.push(sub.media.image.uri);
-                                    } else if (sub.media.photo_image?.uri) {
-                                        images.push(sub.media.photo_image.uri);
-                                    }
-                                    if (sub.media.playable_url) {
-                                        videos.push(sub.media.playable_url);
-                                    } else if (sub.media.source) {
-                                        videos.push(sub.media.source);
-                                    }
-                                }
+                    }
+                    
+                    // Recursively search all properties
+                    if (Array.isArray(obj)) {
+                        for (let item of obj) {
+                            deepSearchMedia(item, depth + 1);
+                        }
+                    } else {
+                        for (let key in obj) {
+                            if (obj.hasOwnProperty(key)) {
+                                deepSearchMedia(obj[key], depth + 1);
                             }
                         }
                     }
                 }
                 
-                posts.push({
-                    id: postId,
-                    text: text,
-                    timestamp: timestamp,
-                    images: images,
-                    video: videos.length > 0 ? videos[0] : '',
-                    permalink: permalink
-                });
-                
-                console.log('[Extractor] Found Story post: ' + postId + ', text: ' + text.substring(0, 50) + ', images: ' + images.length + ', videos: ' + videos.length);
-            }
-        }
-        
-        // Check for generic post structure (fallback)
-        else if (obj.id && (obj.message || obj.story || obj.text || obj.creation_story)) {
-            const postId = String(obj.id);
-            
-            if (!seenIds[postId]) {
-                seenIds[postId] = true;
-                
-                // Extract text content
-                let text = '';
-                if (obj.message && obj.message.text) {
-                    text = obj.message.text;
-                } else if (typeof obj.message === 'string') {
-                    text = obj.message;
-                } else if (obj.story && obj.story.text) {
-                    text = obj.story.text;
-                } else if (typeof obj.story === 'string') {
-                    text = obj.story;
-                } else if (obj.text) {
-                    text = obj.text;
+                // Search in story attachments
+                if (story.attachments) {
+                    deepSearchMedia(story.attachments, 0);
                 }
                 
-                // Extract timestamp
-                let timestamp = Math.floor(Date.now() / 1000);
-                if (obj.created_time) {
-                    timestamp = obj.created_time;
-                } else if (obj.publish_time) {
-                    timestamp = obj.publish_time;
-                } else if (obj.timestamp) {
-                    timestamp = obj.timestamp;
+                // Search in attached_story for shared posts
+                if (isSharedPost && story.attached_story) {
+                    deepSearchMedia(story.attached_story, 0);
                 }
                 
-                // Extract permalink
-                let permalink = '';
-                if (obj.url) {
-                    permalink = obj.url;
-                } else if (obj.permalink_url) {
-                    permalink = obj.permalink_url;
-                }
-                
-                // Extract media
-                const images = [];
-                const videos = [];
-                
-                if (obj.attachments && obj.attachments.data) {
-                    for (let att of obj.attachments.data) {
-                        if (att.media) {
-                            if (att.media.image && att.media.image.uri) {
-                                images.push(att.media.image.uri);
-                            }
-                            if (att.media.source) {
-                                videos.push(att.media.source);
-                            }
-                        }
-                    }
-                }
+                // Combine text for shared posts
+                const finalText = isSharedPost && sharedText ? text + '\n\n[Shared: ' + sharedText + ']' : text;
                 
                 posts.push({
                     id: postId,
-                    text: text,
+                    text: finalText,
                     timestamp: timestamp,
                     images: images,
-                    video: videos.length > 0 ? videos[0] : '',
-                    permalink: permalink
+                    videos: videos,
+                    permalink: permalink,
+                    isShared: isSharedPost
                 });
                 
-                console.log('[Extractor] Found generic post: ' + postId + ', text: ' + text.substring(0, 50) + ', images: ' + images.length);
+                console.log('[Extractor] Found post: ' + postId.substring(0, 30) + ', images: ' + images.length + ', videos: ' + videos.length + ', shared: ' + isSharedPost);
             }
         }
         

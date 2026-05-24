@@ -347,7 +347,7 @@ class FacebookWebViewScraper(
 
         /**
          * JavaScript to extract and parse captured GraphQL responses.
-         * This processes the intercepted data and extracts posts with proper media handling.
+         * Enhanced based on yt-dlp's approach for better media extraction.
          */
         private val GET_CAPTURED_GRAPHQL_SCRIPT = """
 (function() {
@@ -463,43 +463,67 @@ class FacebookWebViewScraper(
                 // Extract permalink
                 let permalink = story.url || story.permalink_url || '';
                 
-                // Extract media from attachments - use deep recursive search
+                // Extract media from attachments using yt-dlp's structured approach
                 const images = [];
                 const videos = [];
                 
-                // Deep search for any media URLs in the story object
-                function deepSearchMedia(obj, depth) {
-                    if (!obj || typeof obj !== 'object' || depth > 10) return;
+                // Parse attachments following yt-dlp's pattern
+                function parseAttachments(attachments) {
+                    if (!attachments || !Array.isArray(attachments)) return;
                     
-                    // Check if this is a Video object (like yt-dlp does)
-                    if (obj.__typename === 'Video' || obj.is_video_broadcast !== undefined) {
-                        console.log('[Media] Found Video object, extracting URLs...');
+                    for (let attachment of attachments) {
+                        // Check for styles/style_type_renderer pattern (yt-dlp approach)
+                        const media = attachment.styles?.attachment?.media 
+                                   || attachment.style_type_renderer?.attachment?.media
+                                   || attachment.attachment_target_renderer?.attachment?.media
+                                   || attachment.throwbackStyles?.attachment_target_renderer?.attachment?.media
+                                   || attachment.media;
                         
-                        // Extract video URLs using yt-dlp's approach
-                        // Priority order: HD quality > SD quality > fallback URLs
-                        let videoUrl = null;
-                        
-                        // Check videoDeliveryLegacyFields (new structure)
-                        const legacyFields = obj.videoDeliveryLegacyFields || obj;
-                        
-                        // Try HD quality first
-                        videoUrl = legacyFields.playable_url_quality_hd 
-                                || legacyFields.browser_native_hd_url
-                                || obj.playable_url_quality_hd
-                                || obj.browser_native_hd_url;
-                        
-                        // Fall back to SD quality
-                        if (!videoUrl) {
-                            videoUrl = legacyFields.playable_url
-                                    || legacyFields.browser_native_sd_url
-                                    || obj.playable_url
-                                    || obj.browser_native_sd_url;
+                        if (media) {
+                            extractMedia(media);
                         }
                         
+                        // Check for all_subattachments (carousel/album posts)
+                        const subattachments = attachment.all_subattachments?.nodes 
+                                            || attachment.target?.attachments;
+                        if (subattachments && Array.isArray(subattachments)) {
+                            for (let sub of subattachments) {
+                                const subMedia = sub.styles?.attachment?.media 
+                                              || sub.media;
+                                if (subMedia) {
+                                    extractMedia(subMedia);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Extract media from a media object
+                function extractMedia(media) {
+                    if (!media) return;
+                    
+                    const typename = media.__typename;
+                    
+                    // Handle Video objects (yt-dlp approach)
+                    if (typename === 'Video' || media.is_video_broadcast !== undefined) {
+                        console.log('[Media] Found Video object');
+                        
+                        // Extract video URL using yt-dlp's priority order
+                        const legacyFields = media.videoDeliveryLegacyFields || media;
+                        
+                        let videoUrl = legacyFields.playable_url_quality_hd 
+                                    || legacyFields.browser_native_hd_url
+                                    || media.playable_url_quality_hd
+                                    || media.browser_native_hd_url
+                                    || legacyFields.playable_url
+                                    || legacyFields.browser_native_sd_url
+                                    || media.playable_url
+                                    || media.browser_native_sd_url;
+                        
                         // Check progressive URLs from videoDeliveryResponseFragment
-                        if (!videoUrl && obj.videoDeliveryResponseFragment) {
-                            const deliveryResult = obj.videoDeliveryResponseFragment.videoDeliveryResponseResult;
-                            if (deliveryResult && deliveryResult.progressive_urls) {
+                        if (!videoUrl && media.videoDeliveryResponseFragment) {
+                            const deliveryResult = media.videoDeliveryResponseFragment.videoDeliveryResponseResult;
+                            if (deliveryResult?.progressive_urls) {
                                 for (let progUrl of deliveryResult.progressive_urls) {
                                     if (progUrl.progressive_url) {
                                         videoUrl = progUrl.progressive_url;
@@ -511,57 +535,81 @@ class FacebookWebViewScraper(
                         
                         if (videoUrl && !videos.includes(videoUrl)) {
                             videos.push(videoUrl);
-                            console.log('[Media] Found video URL: ' + videoUrl.substring(0, 100));
+                            console.log('[Media] Extracted video: ' + videoUrl.substring(0, 100));
                         }
                         
-                        // Extract thumbnail from video object
-                        const thumbnail = obj.thumbnailImage?.uri 
-                                       || obj.preferred_thumbnail?.image?.uri
-                                       || obj.thumbnail_image?.uri;
+                        // Extract video thumbnail
+                        const thumbnail = media.thumbnailImage?.uri 
+                                       || media.preferred_thumbnail?.image?.uri
+                                       || media.thumbnail_image?.uri;
                         if (thumbnail && !images.includes(thumbnail)) {
                             images.push(thumbnail);
-                            console.log('[Media] Found video thumbnail: ' + thumbnail.substring(0, 80));
+                            console.log('[Media] Extracted video thumbnail');
                         }
                     }
-                    
-                    // Check for image URLs (for photos)
-                    if (obj.uri && typeof obj.uri === 'string' && obj.uri.includes('scontent')) {
-                        // Skip if this is a tiny profile pic or icon
-                        const isTinyImage = obj.width && obj.height && (obj.width < 100 || obj.height < 100);
-                        if (!isTinyImage && !images.includes(obj.uri)) {
-                            images.push(obj.uri);
-                            console.log('[Media] Found image: ' + obj.uri.substring(0, 80));
+                    // Handle Photo objects (yt-dlp approach)
+                    else if (typename === 'Photo') {
+                        console.log('[Media] Found Photo object');
+                        
+                        // Extract highest quality image
+                        // Priority: viewer_image > image > photo_image
+                        let imageUrl = media.viewer_image?.uri
+                                    || media.image?.uri
+                                    || media.photo_image?.uri;
+                        
+                        // Also check for progressive images (higher quality)
+                        if (media.progressive_image?.uri) {
+                            imageUrl = media.progressive_image.uri;
                         }
-                    }
-                    
-                    // Also check for direct playable_url (fallback for older structures)
-                    if (obj.playable_url && typeof obj.playable_url === 'string' && !videos.includes(obj.playable_url)) {
-                        videos.push(obj.playable_url);
-                        console.log('[Media] Found playable_url: ' + obj.playable_url.substring(0, 80));
-                    }
-                    
-                    // Recursively search all properties
-                    if (Array.isArray(obj)) {
-                        for (let item of obj) {
-                            deepSearchMedia(item, depth + 1);
+                        
+                        // Check for full-size image in image object
+                        if (!imageUrl && media.image) {
+                            imageUrl = media.image.url || media.image.uri;
                         }
-                    } else {
-                        for (let key in obj) {
-                            if (obj.hasOwnProperty(key)) {
-                                deepSearchMedia(obj[key], depth + 1);
+                        
+                        if (imageUrl && imageUrl.includes('scontent')) {
+                            // Filter out tiny images (profile pics, icons)
+                            const width = media.viewer_image?.width || media.image?.width || 0;
+                            const height = media.viewer_image?.height || media.image?.height || 0;
+                            const isTiny = (width > 0 && height > 0 && (width < 100 || height < 100));
+                            
+                            if (!isTiny && !images.includes(imageUrl)) {
+                                images.push(imageUrl);
+                                console.log('[Media] Extracted photo: ' + imageUrl.substring(0, 100));
                             }
                         }
                     }
+                    // Fallback: check for any image with uri field
+                    else if (media.uri && typeof media.uri === 'string' && media.uri.includes('scontent')) {
+                        const width = media.width || 0;
+                        const height = media.height || 0;
+                        const isTiny = (width > 0 && height > 0 && (width < 100 || height < 100));
+                        
+                        if (!isTiny && !images.includes(media.uri)) {
+                            images.push(media.uri);
+                            console.log('[Media] Extracted image (fallback): ' + media.uri.substring(0, 100));
+                        }
+                    }
                 }
                 
-                // Search in story attachments
-                if (story.attachments) {
-                    deepSearchMedia(story.attachments, 0);
+                // Parse story attachments
+                if (story.attachments && Array.isArray(story.attachments)) {
+                    parseAttachments(story.attachments);
                 }
                 
-                // Search in attached_story for shared posts
+                // Also check comet_sections for attachments
+                if (story.comet_sections?.content?.story?.attachments) {
+                    parseAttachments(story.comet_sections.content.story.attachments);
+                }
+                
+                // Parse attached_story for shared posts
                 if (isSharedPost && story.attached_story) {
-                    deepSearchMedia(story.attached_story, 0);
+                    if (story.attached_story.attachments) {
+                        parseAttachments(story.attached_story.attachments);
+                    }
+                    if (story.attached_story.comet_sections?.content?.story?.attachments) {
+                        parseAttachments(story.attached_story.comet_sections.content.story.attachments);
+                    }
                 }
                 
                 // Combine text for shared posts

@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface FeedDao {
     @Transaction
-    @Query("SELECT * FROM posts ORDER BY timestampSeconds DESC")
+    @Query("SELECT * FROM posts ORDER BY timestampSeconds ASC")
     fun observeFeed(): Flow<List<PostWithAccount>>
 
     @Query("SELECT * FROM accounts ORDER BY platform, username COLLATE NOCASE")
@@ -32,6 +32,6 @@ interface FeedDao {
     suspend fun deleteAccount(platform: Platform, accountId: String)
 
     @Transaction
-    @Query("SELECT * FROM posts WHERE platform = :platform AND accountId = :accountId ORDER BY timestampSeconds DESC")
+    @Query("SELECT * FROM posts WHERE platform = :platform AND accountId = :accountId ORDER BY timestampSeconds ASC")
     fun observePostsForAccount(platform: Platform, accountId: String): Flow<List<PostWithAccount>>
 }

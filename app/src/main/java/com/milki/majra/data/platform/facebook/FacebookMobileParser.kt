@@ -53,6 +53,11 @@ class FacebookMobileParser {
         
         Log.d(TAG, "Extracted ${posts.size} posts")
 
+        // Sort posts by timestamp ascending (oldest first)
+        val sortedPosts = posts
+            .distinctBy { it.platformPostId }
+            .sortedBy { it.timestampSeconds }
+
         // Extract pagination cursor
         val nextCursor = extractNextCursor(doc)
         
@@ -60,9 +65,9 @@ class FacebookMobileParser {
 
         return ParsedProfile(
             account = account,
-            posts = posts,
+            posts = sortedPosts,
             nextCursor = nextCursor,
-            hasMorePosts = nextCursor != null && posts.isNotEmpty(),
+            hasMorePosts = nextCursor != null && sortedPosts.isNotEmpty(),
         )
     }
 
@@ -176,7 +181,7 @@ class FacebookMobileParser {
         }
 
         Log.d(TAG, "Total posts extracted: ${posts.size}")
-        return posts.distinctBy { it.platformPostId }
+        return posts
     }
 
     private fun extractPost(elem: Element, userId: String, username: String): SocialPost? {

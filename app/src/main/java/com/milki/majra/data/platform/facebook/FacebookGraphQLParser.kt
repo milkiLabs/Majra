@@ -82,9 +82,16 @@ class FacebookGraphQLParser {
                 Log.d(TAG, "Debug info: capturedCount=${debug.optInt("capturedCount")}, extractedPosts=${debug.optInt("extractedPosts")}")
             }
             
+            // Sort posts by timestamp ascending (oldest first) and deduplicate
+            val sortedPosts = posts
+                .distinctBy { it.id }
+                .sortedBy { it.timestampSeconds }
+            
+            Log.d(TAG, "Returning ${sortedPosts.size} posts sorted by timestamp (oldest first)")
+            
             return ParsedProfile(
                 account = account,
-                posts = posts.distinctBy { it.id },
+                posts = sortedPosts,
             )
             
         } catch (e: Exception) {

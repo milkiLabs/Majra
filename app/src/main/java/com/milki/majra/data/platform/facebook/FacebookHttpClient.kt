@@ -110,6 +110,56 @@ class FacebookHttpClient(
     }
 
     /**
+     * Resolve username to numeric user ID by fetching their profile page
+     */
+    private suspend fun resolveUserId(username: String): String = withContext(Dispatchers.IO) {
+        val session = sessionStore.current(Platform.FACEBOOK)
+        val cleanUsername = username.trimUsername()
+        
+        Log.d(TAG, "Resolving user ID for: $cleanUsername")
+        
+        val request = Request.Builder()
+            .url("https://www.facebook.com/$cleanUsername")
+            .header("Cookie", session.cookie)
+            .header("User-Agent", DESKTOP_USER_AGENT)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .get()
+            .build()
+        
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            
+            if (!response.isSuccessful) {
+                throw FacebookNetworkException("Could not load profile page for $cleanUsername")
+            }
+            
+            // Try multiple patterns to extract user ID
+            val patterns = listOf(
+                Regex(""""userID":"(\d+)""""),
+                Regex(""""USER_ID":"(\d+)""""),
+                Regex(""""user_id":"(\d+)""""),
+                Regex(""""profileID":"(\d+)""""),
+                Regex(""""profile_id":"(\d+)""""),
+                Regex(""""entity_id":"(\d+)""""),
+            )
+            
+            for (pattern in patterns) {
+                val match = pattern.find(body)
+                if (match != null) {
+                    val userId = match.groupValues[1]
+                    Log.d(TAG, "Resolved $cleanUsername -> user ID: $userId")
+                    return@withContext userId
+                }
+            }
+            
+            // If we can't find numeric ID, use username as fallback
+            Log.w(TAG, "Could not extract numeric user ID, using username: $cleanUsername")
+            return@withContext cleanUsername
+        }
+    }
+
+    /**
      * Fetch timeline posts using GraphQL API
      */
     suspend fun fetchTimelineGraphQL(
@@ -124,34 +174,34 @@ class FacebookHttpClient(
         val cleanUsername = username.trimUsername()
         val tokens = fetchTokens()
         
-        Log.d(TAG, "Fetching GraphQL timeline for: $cleanUsername, cursor: $cursor")
+        // Resolve username to numeric user ID
+        val userId = resolveUserId(cleanUsername)
+        
+        Log.d(TAG, "Fetching GraphQL timeline for: $cleanUsername (ID: $userId), cursor: $cursor")
 
-        // Facebook's GraphQL uses form-encoded data with specific parameter names
-        // Based on actual browser requests, the format is:
-        // av=USER_ID&__user=USER_ID&__a=1&__req=X&__hs=HASH&dpr=1&__ccg=GOOD&__rev=REV&__s=SESSION&__hsi=HASH&__dyn=DYNAMIC&__csr=CSR&__comet_req=15&fb_dtsg=TOKEN&jazoest=JAZOEST&lsd=LSD&__spin_r=REV&__spin_b=BRANCH&__spin_t=TIMESTAMP&fb_api_caller_class=CLASS&fb_api_req_friendly_name=QUERY_NAME&variables=JSON&server_timestamps=true&doc_id=DOC_ID
+        // Build variables JSON - use the exact format from browser
+        val variables = JSONObject().apply {
+            put("userID", userId)  // Must be numeric user ID
+            put("count", 3)  // Start with small count for testing
+            put("scale", 1)
+            if (cursor != null) {
+                put("cursor", cursor)
+            }
+        }
+        
+        Log.d(TAG, "GraphQL variables: ${variables.toString()}")
         
         val formBody = FormBody.Builder()
             .add("fb_dtsg", tokens.dtsg)
             .add("doc_id", PROFILE_TIMELINE_DOC_ID)
+            .add("variables", variables.toString())
             .apply {
-                // Build variables JSON
-                val variables = JSONObject().apply {
-                    put("userID", cleanUsername) // Try username first, may need actual user ID
-                    put("count", 12)
-                    put("scale", 1)
-                    if (cursor != null) {
-                        put("cursor", cursor)
-                    }
-                }
-                add("variables", variables.toString())
-                
                 tokens.lsd?.let { add("lsd", it) }
                 tokens.jazoest?.let { add("jazoest", it) }
                 
                 // Additional parameters that Facebook expects
                 add("__a", "1")
                 add("__req", "1")
-                add("__hs", "")
                 add("dpr", "1")
                 add("__ccg", "GOOD")
                 add("__comet_req", "15")

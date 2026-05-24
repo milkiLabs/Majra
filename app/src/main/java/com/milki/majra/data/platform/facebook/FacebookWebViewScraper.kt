@@ -32,7 +32,7 @@ class FacebookWebViewScraper(
     private val sessionStore: SessionStore,
 ) {
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun scrapeProfile(username: String): String = withContext(Dispatchers.Main) {
+    suspend fun scrapeProfile(username: String, scrollCount: Int = 5): String = withContext(Dispatchers.Main) {
         val session = sessionStore.current(Platform.FACEBOOK)
         val cleanUsername = username.trimUsername()
         
@@ -61,7 +61,7 @@ class FacebookWebViewScraper(
             useWideViewPort = true
             builtInZoomControls = false
             displayZoomControls = false
-            blockNetworkImage = false
+            blockNetworkImage = true
         }
         
         webView.webChromeClient = object : android.webkit.WebChromeClient() {
@@ -101,8 +101,8 @@ class FacebookWebViewScraper(
                 delay(4000)
                 
                 // Scroll down multiple times to trigger timeline post loading
-                Log.d(TAG, "Scrolling to trigger timeline loading...")
-                for (i in 1..5) {
+                Log.d(TAG, "Scrolling to trigger timeline loading (scrollCount: $scrollCount)...")
+                for (i in 1..scrollCount) {
                     val scrollY = i * 800
                     webView.evaluateJavascript("window.scrollTo(0, $scrollY);", null)
                     delay(1500)

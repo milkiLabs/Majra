@@ -83,7 +83,7 @@ fun LoginScreen(
 
                     // Apply platform-specific user-agent if specified in config, falling back to Instagram default if needed
                     val customUa = config.userAgent ?: if (config.platform == Platform.INSTAGRAM) {
-                        InstagramUserAgent.choose(settings.userAgentString)
+                        InstagramUserAgent.choose()
                     } else {
                         null
                     }

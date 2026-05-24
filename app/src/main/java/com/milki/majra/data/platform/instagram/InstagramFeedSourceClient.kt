@@ -17,15 +17,11 @@ class InstagramFeedSourceClient(
         }.getOrElse {
             httpClient.fetchProfileHtml(sourceId)
         }
-        val profile = parser.parseProfile(sourceId, profilePayload)
+        val userId = parser.extractUserId(profilePayload, sourceId)
         val feedPayload = runCatching {
-            profile.userId?.let { httpClient.fetchUserFeedJson(it, profile.account.username) }
+            userId?.let { httpClient.fetchUserFeedJson(it, sourceId) }
         }.getOrNull()
-        val parsed = parser.parseProfile(
-            username = profile.account.username,
-            html = profilePayload,
-            feedJson = feedPayload,
-        )
+        val parsed = parser.parseProfile(sourceId, profilePayload, feedJson = feedPayload)
         return SourceSyncPage(
             account = parsed.account,
             userId = parsed.userId,

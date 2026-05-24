@@ -545,8 +545,6 @@ internal fun PostCard(
                     text = item.post.caption,
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis,
                 )
             } else {
                 Spacer(modifier = Modifier.height(12.dp))

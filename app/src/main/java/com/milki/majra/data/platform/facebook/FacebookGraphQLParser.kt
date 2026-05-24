@@ -82,12 +82,12 @@ class FacebookGraphQLParser {
                 Log.d(TAG, "Debug info: capturedCount=${debug.optInt("capturedCount")}, extractedPosts=${debug.optInt("extractedPosts")}")
             }
             
-            // Sort posts by timestamp ascending (oldest first) and deduplicate
+            // Sort posts by timestamp descending (newest first) and deduplicate
             val sortedPosts = posts
                 .distinctBy { it.id }
-                .sortedBy { it.timestampSeconds }
+                .sortedByDescending { it.timestampSeconds }
             
-            Log.d(TAG, "Returning ${sortedPosts.size} posts sorted by timestamp (oldest first)")
+            Log.d(TAG, "Returning ${sortedPosts.size} posts sorted by timestamp (newest first)")
             
             return ParsedProfile(
                 account = account,
@@ -107,8 +107,15 @@ class FacebookGraphQLParser {
         // Extract text content
         val text = json.optString("text", "")
         
-        // Skip if text is empty and no media (likely a comment or invalid post)
-        if (text.isBlank() && !json.has("images") && !json.has("videos")) {
+        // Extract media first to check if post has content
+        val videosArray = json.optJSONArray("videos")
+        val imagesArray = json.optJSONArray("images")
+        val hasMedia = (videosArray != null && videosArray.length() > 0) || 
+                       (imagesArray != null && imagesArray.length() > 0)
+        
+        // Only skip if BOTH text is empty AND no media exists
+        // Don't skip too aggressively - let posts through even if extraction might have failed
+        if (text.isBlank() && !hasMedia) {
             Log.d(TAG, "Skipping post with no content: $postId")
             return null
         }
@@ -128,7 +135,6 @@ class FacebookGraphQLParser {
         val mediaItems = mutableListOf<PostMediaItem>()
         
         // Extract videos first (they may have thumbnail images too)
-        val videosArray = json.optJSONArray("videos")
         if (videosArray != null && videosArray.length() > 0) {
             for (i in 0 until videosArray.length()) {
                 val videoUrl = videosArray.optString(i)
@@ -153,7 +159,6 @@ class FacebookGraphQLParser {
         }
         
         // Extract images (skip those already used as video thumbnails)
-        val imagesArray = json.optJSONArray("images")
         if (imagesArray != null) {
             val videosCount = videosArray?.length() ?: 0
             for (i in 0 until imagesArray.length()) {

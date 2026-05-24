@@ -32,6 +32,6 @@ interface FeedDao {
     suspend fun deleteAccount(platform: Platform, accountId: String)
 
     @Transaction
-    @Query("SELECT * FROM posts WHERE platform = :platform AND accountId = :accountId ORDER BY timestampSeconds ASC")
+    @Query("SELECT * FROM posts WHERE platform = :platform AND accountId = :accountId ORDER BY timestampSeconds DESC")
     fun observePostsForAccount(platform: Platform, accountId: String): Flow<List<PostWithAccount>>
 }

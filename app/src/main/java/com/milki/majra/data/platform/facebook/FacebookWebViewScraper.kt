@@ -423,11 +423,12 @@ class FacebookWebViewScraper(
                     return;
                 }
                 
-                // Filter out shared posts that are just references (we want the original)
-                // Shared posts have attached_story but we'll handle them specially
+                seenIds[postId] = true;
+                
+                // Check if this is a shared post
                 const isSharedPost = story.attached_story != null;
                 
-                seenIds[postId] = true;
+                console.log('[Extractor] Processing post: ' + postId.substring(0, 30) + ', typename: ' + (story.__typename || 'unknown') + ', shared: ' + isSharedPost);
                 
                 // Extract text from comet_sections or message
                 let text = '';

@@ -471,20 +471,73 @@ class FacebookWebViewScraper(
                 function deepSearchMedia(obj, depth) {
                     if (!obj || typeof obj !== 'object' || depth > 10) return;
                     
-                    // Check for image URLs
+                    // Check if this is a Video object (like yt-dlp does)
+                    if (obj.__typename === 'Video' || obj.is_video_broadcast !== undefined) {
+                        console.log('[Media] Found Video object, extracting URLs...');
+                        
+                        // Extract video URLs using yt-dlp's approach
+                        // Priority order: HD quality > SD quality > fallback URLs
+                        let videoUrl = null;
+                        
+                        // Check videoDeliveryLegacyFields (new structure)
+                        const legacyFields = obj.videoDeliveryLegacyFields || obj;
+                        
+                        // Try HD quality first
+                        videoUrl = legacyFields.playable_url_quality_hd 
+                                || legacyFields.browser_native_hd_url
+                                || obj.playable_url_quality_hd
+                                || obj.browser_native_hd_url;
+                        
+                        // Fall back to SD quality
+                        if (!videoUrl) {
+                            videoUrl = legacyFields.playable_url
+                                    || legacyFields.browser_native_sd_url
+                                    || obj.playable_url
+                                    || obj.browser_native_sd_url;
+                        }
+                        
+                        // Check progressive URLs from videoDeliveryResponseFragment
+                        if (!videoUrl && obj.videoDeliveryResponseFragment) {
+                            const deliveryResult = obj.videoDeliveryResponseFragment.videoDeliveryResponseResult;
+                            if (deliveryResult && deliveryResult.progressive_urls) {
+                                for (let progUrl of deliveryResult.progressive_urls) {
+                                    if (progUrl.progressive_url) {
+                                        videoUrl = progUrl.progressive_url;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (videoUrl && !videos.includes(videoUrl)) {
+                            videos.push(videoUrl);
+                            console.log('[Media] Found video URL: ' + videoUrl.substring(0, 100));
+                        }
+                        
+                        // Extract thumbnail from video object
+                        const thumbnail = obj.thumbnailImage?.uri 
+                                       || obj.preferred_thumbnail?.image?.uri
+                                       || obj.thumbnail_image?.uri;
+                        if (thumbnail && !images.includes(thumbnail)) {
+                            images.push(thumbnail);
+                            console.log('[Media] Found video thumbnail: ' + thumbnail.substring(0, 80));
+                        }
+                    }
+                    
+                    // Check for image URLs (for photos)
                     if (obj.uri && typeof obj.uri === 'string' && obj.uri.includes('scontent')) {
-                        if (!images.includes(obj.uri)) {
+                        // Skip if this is a tiny profile pic or icon
+                        const isTinyImage = obj.width && obj.height && (obj.width < 100 || obj.height < 100);
+                        if (!isTinyImage && !images.includes(obj.uri)) {
                             images.push(obj.uri);
                             console.log('[Media] Found image: ' + obj.uri.substring(0, 80));
                         }
                     }
                     
-                    // Check for video URLs
-                    if (obj.playable_url && typeof obj.playable_url === 'string') {
-                        if (!videos.includes(obj.playable_url)) {
-                            videos.push(obj.playable_url);
-                            console.log('[Media] Found video: ' + obj.playable_url.substring(0, 80));
-                        }
+                    // Also check for direct playable_url (fallback for older structures)
+                    if (obj.playable_url && typeof obj.playable_url === 'string' && !videos.includes(obj.playable_url)) {
+                        videos.push(obj.playable_url);
+                        console.log('[Media] Found playable_url: ' + obj.playable_url.substring(0, 80));
                     }
                     
                     // Recursively search all properties

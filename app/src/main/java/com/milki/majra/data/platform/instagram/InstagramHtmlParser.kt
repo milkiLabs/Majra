@@ -82,12 +82,12 @@ class InstagramHtmlParser {
     fun extractUserId(html: String, username: String): String? {
         val normalizedUsername = username.normalizeUsername()
         val roots = extractJsonRoots(html)
-        return roots.asSequence()
+        return (roots.asSequence()
             .flatMap { root -> root.findObjects().asSequence() }
             .firstOrNull { candidate -> candidate.looksLikeUser(normalizedUsername) }
             ?: roots.asSequence()
                 .flatMap { root -> root.findObjects().asSequence() }
-                .firstOrNull { candidate -> candidate.looksLikeProfileHeader(normalizedUsername) }
+                .firstOrNull { candidate -> candidate.looksLikeProfileHeader(normalizedUsername) })
             ?.optNullableString("id")
     }
 
